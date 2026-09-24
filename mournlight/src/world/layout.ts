@@ -92,7 +92,7 @@ export interface EnemySpawn {
   n?: V3;
 }
 
-export type ItemKind = 'marrow' | 'vessel' | 'oil' | 'whetstone' | 'greatsword' | 'daggers' | 'bow';
+export type ItemKind = 'marrow' | 'vessel' | 'oil' | 'whetstone' | 'greatsword' | 'daggers' | 'bow' | 'charm' | 'stormstone';
 
 export interface ItemDef {
   id: string;
@@ -197,6 +197,8 @@ export const TERRAIN_MODS: TerrainMod[] = [
 // Regions
 // ===========================================================================
 export const REGIONS: RegionDef[] = [
+  { id: 'catacombs', name: 'The Weeping Catacombs', rect: [288, -80, 364, 64], fogColor: 0x06080b, fogDensity: 0.048, ambient: 0.14, moon: 0.0, dread: 0.45, reverb: 0.75, drone: 'crypt', spawn: [320, -19.5, 50] },
+  { id: 'bellspire', name: 'Bellspire', rect: [280, 96, 364, 204], fogColor: 0x1a1e26, fogDensity: 0.018, ambient: 0.3, moon: 1.0, dread: 0.3, reverb: 0.3, drone: 'road', spawn: [320, 0.5, 170] },
   { id: 'crypt', name: 'The Wick Ossuary', rect: [-22, 56, 22, 150], yMax: -1, fogColor: 0x08090b, fogDensity: 0.03, ambient: 0.32, moon: 0.0, dread: 0.25, reverb: 0.55, drone: 'crypt', spawn: [0, -9, 136] },
   { id: 'arena', name: 'The Godwound', circle: [0, -172, 34], yMax: 12, fogColor: 0x151013, fogDensity: 0.017, ambient: 0.36, moon: 0.8, dread: 0.4, reverb: 0.35, drone: 'wound', spawn: [0, 4.2, -152] },
   { id: 'cathedral', name: 'Cathedral of the Last Vigil', rect: [-60, -150, 60, -34], yMin: 9, fogColor: 0x121418, fogDensity: 0.024, ambient: 0.36, moon: 0.9, dread: 0.3, reverb: 0.5, drone: 'choir', spawn: [0, 14.4, -46] },
@@ -444,7 +446,72 @@ S.push(
   { t: 'ribs', c: [0, 4, -172], r: 21, count: 6 },
 );
 
+// ===========================================================================
+// The Weeping Catacombs (floor y -20): a flooded ossuary beneath the Godwound
+// ===========================================================================
+const CC = -20;
+S.push(
+  // arrival hall
+  {
+    t: 'room', x0: 300, x1: 340, z0: 0, z1: 56, y: CC, h: 9, wall: 1.2, m: 'darkstone', floor: 'flag', ceil: 'darkstone', floorThick: 1,
+    openings: [{ side: 'n', at: 320, w: 4, h: 5 }, { side: 'n', at: 333, w: 3, h: 4 }],
+  },
+  // direct corridor, barred at its far end
+  { t: 'room', x0: 314, x1: 326, z0: -20, z1: 0, y: CC, h: 6, wall: 1, m: 'darkstone', floor: 'flag', ceil: 'darkstone', openings: [{ side: 's', at: 320, w: 4, h: 5 }, { side: 'n', at: 320, w: 3, h: 3.6 }] },
+  // the weeping nave (long way round)
+  { t: 'room', x0: 326, x1: 342, z0: -20, z1: 0, y: CC, h: 7, wall: 1, m: 'darkstone', floor: 'flag', ceil: 'darkstone', openings: [{ side: 's', at: 333, w: 3, h: 4 }, { side: 'n', at: 334, w: 3, h: 4 }] },
+  // the Choir's hall
+  { t: 'room', x0: 296, x1: 344, z0: -72, z1: -20, y: CC, h: 15, wall: 1.4, m: 'darkstone', floor: 'flag', ceil: 'darkstone', floorThick: 1, openings: [{ side: 's', at: 320, w: 3, h: 3.6 }, { side: 's', at: 334, w: 3, h: 4 }] },
+);
+for (const z of [8, 20, 32, 44]) for (const x of [307, 333]) S.push({ t: 'pillar', p: [x, CC, z], r: 0.8, h: 9, m: 'darkstone' });
+for (const [x, z] of [[304, -30], [336, -30], [304, -62], [336, -62], [320, -68]]) S.push({ t: 'pillar', p: [x, CC, z], r: 1.1, h: 15, m: 'darkstone' });
+// bone niches along the arrival hall walls
+for (let z = 4; z < 54; z += 4) {
+  S.push({ t: 'box', p: [301.2, CC + 1.4, z], s: [0.6, 1.8, 2.6], m: 'bone', col: false });
+  S.push({ t: 'box', p: [338.8, CC + 1.4, z], s: [0.6, 1.8, 2.6], m: 'bone', col: false });
+}
+
+// ===========================================================================
+// Bellspire: a ruined bell tower climbed through wind and lightning
+// ===========================================================================
+S.push(
+  { t: 'box', p: [320, -0.5, 152], s: [64, 1, 64], m: 'rock' },
+  { t: 'tower', p: [320, 0, 150], inner: 10, wall: 1.2, h: 42, top: 38, m: 'stone', door: 's', exit: 'n', stairW: 2.4, roof: 'none', windows: true },
+  // the gibbet deck at the top, reached through the north exit
+  { t: 'box', p: [320, 37.75, 128.6], s: [30, 0.5, 29.2], m: 'wood' },
+  { t: 'wall', a: [305, 114], b: [335, 114], y: 38, h: 1.1, thick: 0.4, m: 'stone' },
+  { t: 'wall', a: [305, 114], b: [305, 143], y: 38, h: 1.1, thick: 0.4, m: 'stone' },
+  { t: 'wall', a: [335, 114], b: [335, 143], y: 38, h: 1.1, thick: 0.4, m: 'stone' },
+  { t: 'pillar', p: [308, 38, 117], r: 0.6, h: 20, m: 'stone', square: true },
+  { t: 'pillar', p: [332, 38, 117], r: 0.6, h: 20, m: 'stone', square: true },
+);
+
 export const STRUCTURES: Structure[] = S;
+
+/** One-way or two-way passages between distant regions (stairs, lifts). */
+export interface PassageDef {
+  id: string;
+  p: V3;
+  to: V3;
+  toYaw: number;
+  label: string;
+  /** Boss that must be defeated first, if any. */
+  requires?: string;
+}
+
+export const PASSAGES: PassageDef[] = [
+  { id: 'descent', p: [0, 4, -176], to: [320, -19.5, 50], toYaw: Math.PI, label: 'Descend into the wound', requires: 'oskeline' },
+  { id: 'return-wound', p: [316, CC, 53], to: [0, 4.2, -168], toYaw: 0, label: 'Climb back to the Godwound' },
+  { id: 'ascent', p: [320, CC, -66], to: [320, 0.5, 172], toYaw: Math.PI, label: 'Climb the bone stair', requires: 'choir' },
+  { id: 'return-cat', p: [326, 0, 174], to: [320, -19.5, -62], toYaw: 0, label: 'Descend to the catacombs' },
+  { id: 'bell-lift', p: [331, 38, 140], to: [322, 0.5, 168], toYaw: Math.PI, label: 'Ride the bell-rope down' },
+];
+
+/** Deep-region bosses. */
+export const DEEP_BOSSES = {
+  choir: { p: [320, CC, -48] as V3 },
+  warden: { p: [320, 38, 127] as V3 },
+};
 
 // ===========================================================================
 // Points of interest
@@ -456,6 +523,10 @@ export const SHRINES: ShrineDef[] = [
   { id: 'brinemoor', name: 'Brinemoor Chapel', p: [-97, 0.45, 44.5], yaw: Math.PI / 2 },
   { id: 'gallowwood', name: 'Gallowwood Wayside', p: [104, 1.0, 44], yaw: -Math.PI / 2 },
   { id: 'vigil', name: 'The Last Vigil', p: [7.5, K + 0.8, -114], yaw: Math.PI },
+  { id: 'reliquary', name: 'The Drowned Reliquary', p: [324, -20, 48], yaw: Math.PI },
+  { id: 'weeping-nave', name: 'Weeping Nave', p: [338, -20, -6], yaw: -Math.PI / 2 },
+  { id: 'bellfoot', name: 'Bellfoot', p: [314, 0.05, 168], yaw: Math.PI },
+  { id: 'ropewalk', name: 'The Ropewalk', p: [310, 38.1, 139], yaw: Math.PI / 2 },
 ];
 
 export const BOSS = {
@@ -471,9 +542,21 @@ export const BOSS = {
 export const DOORS: DoorDef[] = [
   // Undercroft tower: barred from the inside, opens onto the Barrow Road
   { id: 'undercroft', p: [0, 0.6, -20.7], yaw: 0, w: 2.6, h: 3.4, openFrom: 'back' },
+  // catacomb corridor: barred from the Choir's side
+  { id: 'catacomb-bar', p: [320, -20, -20.2], yaw: 0, w: 2.8, h: 3.4, openFrom: 'back' },
 ];
 
 export const ENEMIES_LAYOUT: EnemySpawn[] = [
+  // Weeping Catacombs
+  { type: 'shambler', p: [312, -20, 30], patrol: [[312, -20, 30], [328, -20, 14]] },
+  { type: 'shambler', p: [330, -20, 40] },
+  { type: 'mimic', p: [308, -20, 18], yaw: 1 },
+  { type: 'screamer', p: [334, -20, -10] },
+  { type: 'knight', p: [320, -20, -8] },
+  // Bellspire
+  { type: 'shambler', p: [306, 0.05, 160] },
+  { type: 'moths', p: [334, 0.05, 162] },
+  { type: 'knight', p: [326, 38.1, 138] },
   // Ossuary
   { type: 'mimic', p: [-6, CY, 120], yaw: 0.4 },
   { type: 'shambler', p: [0, CY, 108], yaw: Math.PI, patrol: [[-6, CY, 108], [6, CY, 112]] },
@@ -525,6 +608,11 @@ export const ITEMS: ItemDef[] = [
   { id: 'crypt-alcove', kind: 'marrow', p: [16, CY, 107], amount: 160 },
   { id: 'brine-house', kind: 'marrow', p: [-141, 0.4, 31], amount: 260 },
   { id: 'bell-vessel', kind: 'vessel', p: [-128, 15.2, -12] },
+  // deep regions
+  { id: 'choir-charm', kind: 'charm', p: [304, -20, 6] },
+  { id: 'catacomb-marrow', kind: 'marrow', p: [338, -20, -17], amount: 600 },
+  { id: 'storm-whetstone', kind: 'stormstone', p: [328, 0.05, 176] },
+  { id: 'deck-marrow', kind: 'marrow', p: [333, 38.1, 116], amount: 900 },
   // armaments
   { id: 'crypt-bow', kind: 'bow', p: [14, CY, 104] },
   { id: 'brine-daggers', kind: 'daggers', p: [-139, 0.4, 33] },

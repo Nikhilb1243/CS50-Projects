@@ -9,7 +9,31 @@ import type { DoorDef, ItemKind, ShrineDef } from './layout';
 import { patchFog } from '../fx/fog';
 import { clamp01, easeInOut } from '../core/math';
 
-export type InteractKind = 'shrine' | 'door' | 'fogwall' | 'item' | 'remnant';
+export type InteractKind = 'shrine' | 'door' | 'fogwall' | 'item' | 'remnant' | 'passage';
+
+/** A stair, rift or lift that carries the Revenant between distant regions. */
+export class Passage implements Interactable {
+  readonly kind = 'passage' as const;
+  readonly pos: THREE.Vector3;
+  readonly radius = 2.4;
+  enabled = true;
+  private mesh: THREE.Mesh;
+
+  constructor(readonly def: import('./layout').PassageDef, scene: THREE.Scene) {
+    this.pos = new THREE.Vector3(...def.p);
+    const ring = new THREE.RingGeometry(0.9, 1.3, 32);
+    ring.rotateX(-Math.PI / 2);
+    this.mesh = new THREE.Mesh(ring, new THREE.MeshBasicMaterial({ color: new THREE.Color(0.35, 0.6, 1.4), transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+    this.mesh.position.copy(this.pos).setY(this.pos.y + 0.06);
+    scene.add(this.mesh);
+  }
+
+  update(t: number): void {
+    this.mesh.visible = this.enabled;
+    (this.mesh.material as THREE.MeshBasicMaterial).opacity = 0.35 + 0.25 * Math.sin(t * 2);
+    this.mesh.rotation.y = t * 0.3;
+  }
+}
 
 export interface Interactable {
   readonly kind: InteractKind;
@@ -260,6 +284,8 @@ export const ITEM_INFO: Record<ItemKind, { name: string; desc: string; color: nu
   whetstone: { name: 'Knucklebone Whetstone', desc: 'A whetstone carved from a knuckle. Your strikes bite deeper.', color: 0xff8870 },
   greatsword: { name: 'Coffin-Lid Slab', desc: 'Grave iron, heavy as guilt. Slow blows that stagger anything. (X to swap arms)', color: 0xff9a60 },
   daggers: { name: 'Hush and Lull', desc: 'Twin needles. Quick cuts that make wounds bleed. (X to swap arms)', color: 0xa0d0ff },
+  charm: { name: 'Choir-Bone Charm', desc: 'A finger bone that still hums. The flame within you gathers a third faster.', color: 0x9fd0ff },
+  stormstone: { name: 'Stormglass Whetstone', desc: 'Glass fused by lightning. Your strikes bite deeper still.', color: 0xd0e0ff },
   bow: { name: 'Gloamstring', desc: 'An ashwood bow. Hold strike to draw, release to loose; guard to aim. Arrows return at candles. (X to swap arms)', color: 0xd8c8a0 },
 };
 

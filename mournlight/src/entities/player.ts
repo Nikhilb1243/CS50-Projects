@@ -146,8 +146,17 @@ export class Player extends Actor {
     return this.ult >= ULT_MAX;
   }
 
+  /** Ultimate gain multiplier (Choir-Bone Charm). */
+  ultMult = 1;
+
+  /** External shove (wind). */
+  push(x: number, z: number): void {
+    this.knock.x += x;
+    this.knock.z += z;
+  }
+
   gainUlt(n: number): void {
-    this.ult = Math.min(ULT_MAX, this.ult + n);
+    this.ult = Math.min(ULT_MAX, this.ult + n * this.ultMult);
   }
 
   /** Equip a weapon the player owns (inventory or quick-swap). */
@@ -339,7 +348,7 @@ export class Player extends Actor {
     this.aiming = (this.state === 'draw' || (this.progress.weapon === 'bow' && inp.held('block') && this.state === 'move'));
 
     const inWaterNow = this.pos.y < TERRAIN.waterLevel - 0.1 && this.pos.x > TERRAIN.waterRect[0] && this.pos.x < TERRAIN.waterRect[2] && this.pos.z > TERRAIN.waterRect[1] && this.pos.z < TERRAIN.waterRect[3];
-    this.inWater = inWaterNow;
+    this.inWater = inWaterNow || this.ctx.world.inFlood(this.pos);
 
     switch (this.state) {
       case 'move':
@@ -1086,7 +1095,7 @@ export class Player extends Actor {
     let best: Enemy | null = null;
     let bestScore = Infinity;
     const eye = new THREE.Vector3(this.pos.x, this.pos.y + 1.5, this.pos.z);
-    for (const e of this.ctx.enemies) {
+    for (const e of [...this.ctx.enemies, ...(this.ctx.bosses as unknown as Enemy[])]) {
       if (!e.alive || !e.lockable || e === current) continue;
       const dx = e.pos.x - this.pos.x;
       const dz = e.pos.z - this.pos.z;

@@ -19,6 +19,9 @@ import { Sky } from './fx/sky';
 import { GpuParticles } from './fx/gpuparticles';
 import { Abilities } from './combat/abilities';
 import { crawlUniforms } from './ai/dress';
+import { BoneChoir, HangedWarden, type DeepBoss } from './ai/bosses';
+import { DEEP_BOSSES } from './world/layout';
+import type { Passage } from './world/interactables';
 import { BOW, WEAPONS, WEAPON_ORDER, type WeaponId } from './data/weapons';
 import { buildEnvironment } from './fx/envmap';
 import { regionLut } from './fx/lut';
@@ -50,6 +53,8 @@ const HEMI_RED = new THREE.Color(0x8a2a1c);
 const MOON_DIR = new THREE.Vector3(0.45, 0.62, -0.64).normalize();
 /** Per-region surface wetness, environment-reflection strength and exposure bias. */
 const REGION_LOOK: Record<string, { wet: number; env: number; exposure: number }> = {
+  catacombs: { wet: 1, env: 0.04, exposure: 0.85 },
+  bellspire: { wet: 0.7, env: 0.5, exposure: 1 },
   crypt: { wet: 0.55, env: 0.06, exposure: 0.85 },
   road: { wet: 0.35, env: 0.45, exposure: 1 },
   village: { wet: 1, env: 0.55, exposure: 1 },
@@ -66,6 +71,8 @@ const REGION_SUBTITLES: Record<string, string> = {
   forest: 'every bough bears fruit of rope',
   cathedral: 'they prayed until the candles ran out',
   arena: 'the god fell here, and did not stop bleeding',
+  catacombs: 'the water remembers every name',
+  bellspire: 'it tolls for whoever climbs',
 };
 
 export class Game {
@@ -130,6 +137,9 @@ export class Game {
   private mapView!: MapView;
   private noteMeshes: { id: string; pos: THREE.Vector3; mesh: THREE.Mesh }[] = [];
   private guideT = 0;
+  private deepBosses: DeepBoss[] = [];
+  private cineBoss: DeepBoss | null = null;
+  private lightningT = 8;
   private objT = 0;
 
   constructor(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
@@ -234,6 +244,7 @@ export class Game {
       world: this.world,
       player: null as unknown as Player,
       enemies: this.enemies,
+      bosses: [],
       hitstop: (d, s) => self.time.hitstop(d, s),
       shake: (a) => self.cam.addTrauma(a),
       flash: (a, c) => self.flash(a, c),
@@ -267,6 +278,13 @@ export class Game {
     this.boss.onDefeated = () => this.onBossDefeated();
     for (const d of this.world.dynamics) this.combat.knockables.push(d);
     this.horror = new HorrorDirector(this.ctx);
+    this.deepBosses = [new BoneChoir(this.ctx, new THREE.Vector3(...DEEP_BOSSES.choir.p), this.world.tex.flesh.map), new HangedWarden(this.ctx, new THREE.Vector3(...DEEP_BOSSES.warden.p))];
+    this.ctx.bosses = this.deepBosses;
+    for (const b of this.deepBosses) {
+      this.combat.add(b);
+      b.onIntro = () => this.startDeepIntro(b);
+      b.onDefeated = () => this.onDeepBossDefeated(b);
+    }
     this.initObjectives();
     this.debugOverlay = new DebugOverlay(
       this.uiRoot,
@@ -417,6 +435,8 @@ export class Game {
     this.facts.regionsVisited = this.regionsVisited;
     this.mapView.load(s.explored);
     for (const n of this.noteMeshes) n.mesh.visible = !this.notesRead.has(n.id);
+    for (const b of this.deepBosses) if (s.deepBosses?.includes(b.id)) b.remove();
+    p.ultMult = s.itemsTaken.includes('choir-charm') ? 1.35 : 1;
     p.recalcStats(true);
     p.lantern.drainMult = s.fuelMax > PLAYER_TUNING.lanternFuelMax ? 0.8 : 1;
     for (const sh of this.world.shrines) if (s.shrinesLit.includes(sh.def.id)) sh.kindle();
@@ -470,6 +490,7 @@ export class Game {
       notesRead: [...this.notesRead],
       regionsVisited: [...this.regionsVisited],
       explored: this.mapView.serialize(),
+      deepBosses: this.deepBosses.filter((b) => !b.alive).map((b) => b.id),
     });
   }
 
@@ -571,6 +592,7 @@ export class Game {
 
   private resetWorldAfterRestOrDeath(): void {
     for (const e of this.enemies) if (e !== this.boss && !e.phantom) e.reset();
+    for (const b of this.deepBosses) b.reset();
     this.horror.clearPhantoms();
     this.hazards.clear();
     this.world.resetDynamics();
@@ -652,6 +674,14 @@ export class Game {
               prog.dmgBonus += 0.12;
               this.hud.toast(info.name, info.desc);
               break;
+            case 'charm':
+              p.ultMult = 1.35;
+              this.hud.toast(info.name, info.desc);
+              break;
+            case 'stormstone':
+              prog.dmgBonus += 0.15;
+              this.hud.toast(info.name, info.desc);
+              break;
             case 'greatsword':
             case 'daggers':
             case 'bow':
@@ -662,6 +692,23 @@ export class Game {
           this.audio.play('pickup', { volume: 0.8 });
           this.particles.wisps(it.pos.clone().setY(it.pos.y + 0.5), 12, ITEM_INFO[it.item].color);
           this.save();
+        });
+        break;
+      }
+      case 'passage': {
+        const ps = target as Passage;
+        p.startInteract(0.5, null, () => {
+          this.fadeTarget = 1;
+          this.audio.play('rest', { volume: 0.5, rate: 0.7 });
+          window.setTimeout(() => {
+            const to = new THREE.Vector3(...ps.def.to);
+            this.player.teleport(to, ps.def.toYaw);
+            this.player.yaw = this.player.prevYaw = ps.def.toYaw;
+            this.cam.snapBehind(ps.def.toYaw);
+            this.physics.refreshQueries();
+            this.fadeTarget = 0;
+            this.regionTimer = 0;
+          }, 900);
         });
         break;
       }
@@ -760,6 +807,54 @@ export class Game {
   // ---------------------------------------------------------------------------
   // Boss
   // ---------------------------------------------------------------------------
+  private get activeDeep(): DeepBoss | null {
+    return this.deepBosses.find((b) => b.fightActive) ?? null;
+  }
+
+  private startDeepIntro(b: DeepBoss): void {
+    if (this.mode !== 'playing') {
+      b.reset();
+      return;
+    }
+    this.cineBoss = b;
+    this.mode = 'cinematic';
+    this.cinematicT = 0;
+    this.player.setCinematic(true);
+    this.player.lockTarget = null;
+    this.input.gameplayEnabled = false;
+    this.hud.setVisible(false);
+    this.horror.bossFight = true;
+    this.hud.banner(b.displayName, { sub: b.subtitle, dur: 3.2 });
+    this.audio.play('boss_roar', { volume: 0.9, rate: 0.6 });
+  }
+
+  private onDeepBossDefeated(b: DeepBoss): void {
+    this.horror.bossFight = false;
+    this.facts.bossesDefeated.add(b.id);
+    this.syncFacts();
+    this.hud.banner('SILENCED', { sub: b.displayName, dur: 4 });
+    this.player.lockTarget = null;
+    this.save();
+  }
+
+  /** Bellspire weather: gusts that shove the climber and lightning that shows what waits. */
+  private weather(dt: number): void {
+    if (this.region.id !== 'bellspire' || this.mode !== 'playing') return;
+    const p = this.player;
+    if (p.pos.y > 20) {
+      const g = Math.sin(this.time.real * 0.37) * Math.sin(this.time.real * 1.13 + 1);
+      if (Math.abs(g) > 0.5) p.push(g * dt * 3.2, Math.cos(this.time.real * 0.2) * g * dt * 1.4);
+    }
+    this.lightningT -= dt;
+    if (this.lightningT <= 0) {
+      this.lightningT = 6 + Math.random() * 9;
+      this.flash(0.35, 0xdfe8ff);
+      const at = new THREE.Vector3(320 + (Math.random() - 0.5) * 40, 45, 140 + (Math.random() - 0.5) * 40);
+      this.world.lights.flash(at, 0xdfe8ff, 80, 90, 0.35);
+      window.setTimeout(() => this.audio.play('shockwave', { volume: 0.6, rate: 0.3 + Math.random() * 0.1 }), 300 + Math.random() * 900);
+    }
+  }
+
   private startBossIntro(): void {
     this.mode = 'cinematic';
     this.cinematicT = 0;
@@ -811,6 +906,7 @@ export class Game {
     this.player.update(dt);
     for (const e of this.enemies) e.update(dt);
     this.hazards.update(dt);
+    for (const b of this.deepBosses) b.update(dt);
     this.abilities.step(dt);
     this.physics.step();
     this.world.step();
@@ -826,8 +922,11 @@ export class Game {
         this.player.setCinematic(false);
         this.input.gameplayEnabled = true;
         this.hud.setVisible(true);
-        events.emit('boss:start', { name: this.boss.displayName });
-        this.player.lockTarget = this.boss;
+        const cb = this.cineBoss;
+        events.emit('boss:start', { name: cb ? cb.displayName : this.boss.displayName });
+        this.player.lockTarget = cb ? (cb as unknown as Enemy) : this.boss;
+        if (cb) cb.startFight();
+        this.cineBoss = null;
       }
     }
     this.regionTimer -= dt;
@@ -874,6 +973,8 @@ export class Game {
         return `Take ${ITEM_INFO[(it as Pickup).item].name}`;
       case 'remnant':
         return 'Reclaim your Marrow';
+      case 'passage':
+        return (it as Passage).def.label;
     }
   }
 
@@ -921,7 +1022,7 @@ export class Game {
       const next = this.objectives.current;
       if (o.main && next) window.setTimeout(() => this.hud.message(next.title, 3.5), 3800);
     };
-    const tints: Record<string, string> = { crypt: '#2a2824', road: '#2c3034', village: '#1e2c2e', forest: '#232a20', cathedral: '#34302a', arena: '#361c1a' };
+    const tints: Record<string, string> = { catacombs: '#1a2226', bellspire: '#2a2c34', crypt: '#2a2824', road: '#2c3034', village: '#1e2c2e', forest: '#232a20', cathedral: '#34302a', arena: '#361c1a' };
     this.mapView = new MapView((x, z) => tints[this.world.regionAt(new THREE.Vector3(x, 0, z)).id] ?? '#26282a');
     const paper = new THREE.MeshStandardMaterial({ color: 0xd8ccb0, roughness: 0.9, emissive: 0x2a2418, side: THREE.DoubleSide });
     for (const n of NOTES) {
@@ -943,6 +1044,8 @@ export class Game {
     this.facts.doorsOpen.clear();
     for (const d of this.world.doors) if (d.open) this.facts.doorsOpen.add(d.def.id);
     if (this.bossDefeated) this.facts.bossesDefeated.add('oskeline');
+    for (const b of this.deepBosses) if (!b.alive) this.facts.bossesDefeated.add(b.id);
+    for (const p of this.world.passages) p.enabled = !p.def.requires || this.facts.bossesDefeated.has(p.def.requires);
   }
 
   private objectiveStep(dt: number): void {
@@ -1088,13 +1191,13 @@ export class Game {
       this.cam.lockTarget = lt && lt.alive ? lt.pos : null;
       this.cam.lockHeight = lt ? lt.height * (lt.def.type === 'boss' ? 0.55 : 0.9) : 1.2;
       if (this.mode === 'cinematic') {
-        const b = this.boss;
+        const b = this.cineBoss ?? this.boss;
         const toBoss = this.tmp.subVectors(b.pos, p.pos).setY(0).normalize();
         const side = new THREE.Vector3(-toBoss.z, 0, toBoss.x);
         const k = clamp01(this.cinematicT / 1.2);
         this.cam.override = {
           pos: p.pos.clone().addScaledVector(toBoss, 3).addScaledVector(side, 3.2).add(new THREE.Vector3(0, 2.2, 0)),
-          look: b.pos.clone().setY(b.pos.y + 3.5 + 1.5 * clamp01(this.cinematicT / 2)),
+          look: b.pos.clone().setY(b.pos.y + b.height * 0.6 + 1.5 * clamp01(this.cinematicT / 2)),
           blend: this.cinematicT < 2.9 ? k : 1 - clamp01((this.cinematicT - 2.9) / 0.6),
         };
       } else this.cam.override = null;
@@ -1108,6 +1211,8 @@ export class Game {
     // Visuals
     p.renderUpdate(realDt, alpha);
     for (const e of this.enemies) if (!e.sleeping && !e.removed) e.render(alpha);
+    for (const b of this.deepBosses) b.render();
+    this.weather(realDt);
     this.updateAtmosphere(realDt);
     const camPos = this.cam.camera.position;
     const fogDist = Math.min(170, 2.6 / Math.max(0.012, this.fogDensity));
@@ -1127,8 +1232,8 @@ export class Game {
       health: p.health / p.maxHealth,
       playerPos: p.pos,
       forward: this.cam.forward(new THREE.Vector3()),
-      bossActive: this.boss.fightActive && this.boss.alive,
-      bossPhase: this.boss.phase,
+      bossActive: (this.boss.fightActive && this.boss.alive) || !!this.activeDeep,
+      bossPhase: this.activeDeep?.phase ?? this.boss.phase,
       paused: this.mode === 'paused' || this.mode === 'title',
     });
 
@@ -1234,7 +1339,7 @@ export class Game {
       marrow: p.progress.marrow,
       dread: this.horror.dread,
       lock,
-      boss: this.boss.fightActive || (this.boss.alive && this.boss.state === 'transform') ? { name: this.boss.displayName, hp: this.boss.health, max: this.boss.maxHealth } : null,
+      boss: this.activeDeep ? { name: this.activeDeep.displayName, hp: this.activeDeep.health, max: this.activeDeep.maxHealth } : this.boss.fightActive || (this.boss.alive && this.boss.state === 'transform') ? { name: this.boss.displayName, hp: this.boss.health, max: this.boss.maxHealth } : null,
       prompt: this.prompt ? { key, text: this.prompt.text } : null,
       hint,
       ult: p.ult,

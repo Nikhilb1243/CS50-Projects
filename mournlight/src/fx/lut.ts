@@ -32,6 +32,10 @@ export const REGION_GRADES: Record<string, GradeDef> = {
   forest: g({ slope: [1.0, 1.02, 0.92], offset: [0.006, 0.01, 0.0], power: [1.0, 0.98, 1.08], sat: 0.88, contrast: 1.06, shadowTint: [0.44, 0.52, 0.4], highTint: [0.6, 0.52, 0.38], split: 0.4 }),
   // steel shadows, candle-amber highlights, deep blacks
   cathedral: g({ slope: [1.03, 1.0, 0.98], offset: [-0.004, -0.002, 0.004], power: [1.02, 1.02, 1.0], sat: 0.95, contrast: 1.14, shadowTint: [0.4, 0.46, 0.58], highTint: [0.62, 0.52, 0.38], split: 0.45 }),
+  // drowned: green-black water light
+  catacombs: g({ slope: [0.92, 1.0, 1.0], offset: [0, 0.008, 0.01], power: [1.08, 1.02, 1.0], sat: 0.75, contrast: 1.12, shadowTint: [0.34, 0.48, 0.5], highTint: [0.5, 0.56, 0.6], split: 0.5 }),
+  // storm: steel and bone white
+  bellspire: g({ slope: [0.98, 1.0, 1.06], offset: [0, 0.004, 0.012], power: [1.0, 1.0, 0.97], sat: 0.8, contrast: 1.1, shadowTint: [0.4, 0.44, 0.56], highTint: [0.56, 0.56, 0.6], split: 0.35 }),
   // bruised violet shadows, arterial highlights
   arena: g({ slope: [1.06, 0.96, 0.98], offset: [0.008, 0.0, 0.01], power: [0.98, 1.04, 1.0], sat: 1.0, contrast: 1.1, shadowTint: [0.52, 0.4, 0.56], highTint: [0.64, 0.44, 0.38], split: 0.5 }),
 };

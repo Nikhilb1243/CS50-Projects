@@ -9,7 +9,7 @@ import { StaticBuilder } from './builder';
 import { LightManager, MOON_OFFSET, tonguesFor, type FlameSource } from './lights';
 import { LightShafts } from './shafts';
 import { createPropSet, buildCage, makeBarrel, makeCrate, scatter, type Cage, type DynamicProp, type PropSet } from './props';
-import { FogWall, Pickup, Remnant, Shrine, ShortcutDoor, type Interactable } from './interactables';
+import { FogWall, Passage, Pickup, Remnant, Shrine, ShortcutDoor, type Interactable } from './interactables';
 import { models, bakePosed } from '../entities/models';
 import { corpsePose } from '../entities/poses';
 import {
@@ -26,6 +26,7 @@ import {
   REGIONS,
   SHRINES,
   SHAFTS,
+  PASSAGES,
   STRUCTURES,
   TERRAIN,
   type RegionDef,
@@ -66,6 +67,10 @@ export class World {
   private heart!: THREE.Mesh;
   arenaPhase = 1;
   shafts!: LightShafts;
+  passages: Passage[] = [];
+  /** Rising and falling flood water of the Weeping Catacombs. */
+  private floodMesh!: THREE.Mesh;
+  floodLevel = -19.6;
   private t = 0;
 
   constructor(
@@ -77,7 +82,7 @@ export class World {
   }
 
   get interactables(): Interactable[] {
-    return [...this.shrines, ...this.doors, this.fogWall, ...this.items, this.remnant];
+    return [...this.shrines, ...this.doors, this.fogWall, ...this.items, this.remnant, ...this.passages];
   }
 
   async build(progress: (p: number, label: string) => void): Promise<void> {
@@ -111,6 +116,17 @@ export class World {
       this.items.push(new Pickup(it.id, it.kind, it.amount ?? 0, p, this.scene));
     }
     this.remnant = new Remnant(this.scene, this.mats);
+    for (const d of PASSAGES) this.passages.push(new Passage(d, this.scene));
+    {
+      const geo = new THREE.PlaneGeometry(44, 128, 1, 1);
+      geo.rotateX(-Math.PI / 2);
+      const nm = this.tex.water;
+      const fm = patchFog(new THREE.MeshStandardMaterial({ color: 0x070c0c, roughness: 0.08, metalness: 0.3, normalMap: nm, normalScale: new THREE.Vector2(0.4, 0.4), transparent: true, opacity: 0.88 }));
+      this.floodMesh = new THREE.Mesh(geo, fm);
+      this.floodMesh.position.set(320, this.floodLevel, -8);
+      this.floodMesh.renderOrder = 2;
+      this.scene.add(this.floodMesh);
+    }
     this.buildHeart();
 
     await tick(0.56, 'Planting the dead trees');
@@ -471,6 +487,10 @@ export class World {
     this.fogWall.update(dt, t);
     for (const it of this.items) it.update(t);
     this.remnant.update(t);
+    for (const p of this.passages) p.update(t);
+    // the flood breathes: a slow tide through the catacombs (about a minute)
+    this.floodLevel = -20 + 0.4 + Math.sin((t * Math.PI * 2) / 55) * 0.35;
+    this.floodMesh.position.y = this.floodLevel;
     const nm = (this.water.material as THREE.MeshStandardMaterial).normalMap;
     if (nm) nm.offset.set(t * 0.012, t * 0.007);
     this.props.cull(camPos, fogDist);
@@ -486,6 +506,11 @@ export class World {
     hm.emissive.setRGB(0.5 * pulse + 0.05, 0.03 * pulse, 0.01);
     this.heart.scale.setScalar(1 + pulse * 0.03);
     if (this.heartFlame.lit) this.heartFlame.intensity = 45 + pulse * 45;
+  }
+
+  /** Is this point under the catacomb flood? */
+  inFlood(p: THREE.Vector3): boolean {
+    return p.x > 296 && p.x < 344 && p.z > -72 && p.z < 56 && p.y < this.floodLevel && p.y > -21;
   }
 
   get time(): number {

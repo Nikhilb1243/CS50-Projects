@@ -43,6 +43,8 @@ export interface GameContext {
   world: World;
   player: Player;
   enemies: Enemy[];
+  /** Deep-region bosses (lockable, not Enemy subclasses). */
+  bosses: import('../ai/bosses').DeepBoss[];
   hitstop(duration: number, scale?: number): void;
   shake(amount: number): void;
   flash(amount: number, color?: THREE.ColorRepresentation): void;

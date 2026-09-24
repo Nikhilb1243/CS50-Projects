@@ -21,6 +21,7 @@ export interface SaveData {
   notesRead?: string[];
   regionsVisited?: string[];
   explored?: string;
+  deepBosses?: string[];
 }
 
 const KEY = 'mournlight.save.v1';
