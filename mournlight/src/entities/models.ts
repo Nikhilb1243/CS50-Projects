@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { HUMAN, JOINTS, Rig, SkinBuilder, type Joint, type Proportions, type Vec3T } from './rig';
-import { patchFog, rimPatch } from '../fx/fog';
+import { patchFog, rimPatch, dissolvePatch } from '../fx/fog';
 
 /**
  * A spawned character model. Entities only talk to this interface, so the
@@ -24,6 +24,8 @@ export interface ModelInstance {
   materials: THREE.Material[];
   scale: number;
   setOpacity(o: number): void;
+  /** 0 = whole, 1 = gone: burns the body away (falls back to opacity for materials without the patch). */
+  setDissolve(v: number): void;
   flash(amount: number): void;
   setShadows(cast: boolean): void;
   dispose(): void;
@@ -56,6 +58,12 @@ function lathe(profile: [number, number][], seg = 12): THREE.BufferGeometry {
 }
 
 function charMaterials(opts: { doubleSide?: boolean; roughness?: number; metalRough?: number } = {}): THREE.Material[] {
+  // one dissolve uniform per model, shared by its materials (see ModelInstance.setDissolve)
+  const dissolve = { value: 0 };
+  const litPatch = (shader: THREE.WebGLProgramParametersWithUniforms, r: THREE.WebGLRenderer): void => {
+    rimPatch(shader, r);
+    dissolvePatch(shader, dissolve);
+  };
   const cloth = patchFog(
     new THREE.MeshStandardMaterial({
       vertexColors: true,
@@ -63,11 +71,12 @@ function charMaterials(opts: { doubleSide?: boolean; roughness?: number; metalRo
       metalness: 0.02,
       side: opts.doubleSide ? THREE.DoubleSide : THREE.FrontSide,
     }),
-    rimPatch,
-    'rim',
+    litPatch,
+    'rim-dis',
   );
-  const metal = patchFog(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: opts.metalRough ?? 0.45, metalness: 0.85 }), rimPatch, 'rim');
-  const glow = patchFog(new THREE.MeshBasicMaterial({ vertexColors: true }));
+  const metal = patchFog(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: opts.metalRough ?? 0.45, metalness: 0.85 }), litPatch, 'rim-dis');
+  const glow = patchFog(new THREE.MeshBasicMaterial({ vertexColors: true }), (shader) => dissolvePatch(shader, dissolve), 'dis');
+  for (const m of [cloth, metal, glow]) m.userData.dissolve = dissolve;
   return [cloth, metal, glow];
 }
 
@@ -100,6 +109,7 @@ function finish(
   const rig = new Rig(bones);
   const baseEmissive = (mats[0] as THREE.MeshStandardMaterial).emissive.clone();
   let opacity = 1;
+  let extrasHidden = false;
   return {
     root,
     body,
@@ -127,6 +137,20 @@ function finish(
           }
         }),
       );
+    },
+    setDissolve(v: number) {
+      const u = mats[0].userData.dissolve as { value: number } | undefined;
+      if (!u) {
+        this.setOpacity(1 - v);
+        return;
+      }
+      u.value = v;
+      // carried pieces (weapons, lanterns, masks) drop out early rather than dissolving
+      const hide = v >= 0.3;
+      if (hide !== extrasHidden) {
+        extrasHidden = hide;
+        extras.forEach((e) => (e.visible = !hide));
+      }
     },
     flash(amount: number) {
       const m = mats[0] as THREE.MeshStandardMaterial;
@@ -737,6 +761,9 @@ export class GLTFModelProvider implements ModelProvider {
           m.transparent = o < 1;
           m.opacity = o;
         }
+      },
+      setDissolve(v: number) {
+        this.setOpacity(1 - v);
       },
       flash() {
         /* no-op for imported assets */

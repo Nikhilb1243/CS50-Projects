@@ -16,6 +16,9 @@ import type { Player } from '../entities/player';
 import { CreatureDress, DRESS } from './dress';
 import { events } from '../core/events';
 
+/** Seconds after death when the collapsed body starts to dissolve. */
+const DISSOLVE_AT = 2.4;
+
 export type EState =
   | 'idle'
   | 'patrol'
@@ -75,6 +78,8 @@ export class Enemy extends Actor {
   protected feet: EntityVoice;
   protected hurtFlash = 0;
   protected flinch = 0;
+  private flinchX = 0;
+  private flinchZ = -1;
   protected pose: Pose = makePose();
   protected t = Math.random() * 10;
   protected stepPhase = 0;
@@ -172,7 +177,7 @@ export class Enemy extends Actor {
     const out = this.state !== 'dead' && (this.streamedOut ? distToPlayer > Enemy.viewDist : distToPlayer > Enemy.viewDist + 10);
     if (out !== this.streamedOut) this.setStreamed(out);
     this.sleeping = out || (distToPlayer > Enemy.wakeDist && this.state !== 'dead');
-    this.model.setShadows(distToPlayer < 28);
+    this.model.setShadows(distToPlayer < 28 && !(this.state === 'dead' && this.deadTime > DISSOLVE_AT));
     // animation LOD: distant enemies update their rig at a lower rate
     this.animStride = this.state === 'attack' || this.state === 'dead' || distToPlayer < 30 ? 1 : distToPlayer < 55 ? 2 : 3;
     if (this.sleeping) {
@@ -338,11 +343,16 @@ export class Enemy extends Actor {
       case 'dead':
         this.deadTime += dt;
         if (this.char && this.deadTime > 0.3) this.locomote(dt, null, 0);
-        if (this.deadTime > 3.5) {
-          const fade = 1 - clamp01((this.deadTime - 3.5) / 1.5);
-          this.model.setOpacity(fade);
-          if (this.deadTime > 2.6 && Math.random() < 0.4) this.ctx.particles.embers(this.center(this.tmp), 1, 0.5);
-          if (fade <= 0) this.model.root.visible = false;
+        // collapse first (death pose), then the body burns away into ash and mist
+        if (this.deadTime > DISSOLVE_AT) {
+          const k = clamp01((this.deadTime - DISSOLVE_AT) / 1.8);
+          this.model.setDissolve(k);
+          const c = this.center(this.tmp);
+          c.y -= this.height * 0.25;
+          if (k < 0.95 && Math.random() < 0.8) this.ctx.gpu.emit(this.ctx.gpu.alpha, { pos: c, count: 2, jitter: this.radius * 1.2, vel: new THREE.Vector3(0, 0.7, 0), spread: 0.6, speed: [0.1, 0.5], life: [1.2, 2.4], size: [0.025, 0.06], color: 0x2e2a27, alpha: 0.85, gravity: -0.4, drag: 0.6 });
+          if (k < 0.9 && Math.random() < 0.3) this.ctx.particles.smoke(c, 1, 0x55555e);
+          if (Math.random() < 0.4) this.ctx.particles.embers(c, 1, 0.5);
+          if (k >= 1) this.model.root.visible = false;
         }
         break;
       default:
@@ -712,6 +722,10 @@ export class Enemy extends Actor {
     this.health -= dmg;
     this.hurtFlash = 1;
     this.flinch = 1;
+    // remember where the blow pushed, in the enemy's own frame, so the flinch leans with it
+    const rel = Math.atan2(h.dir.x, h.dir.z) - this.yaw;
+    this.flinchX = Math.sin(rel);
+    this.flinchZ = Math.cos(rel);
     this.awareness = 1.3;
     this.lastKnown.copy(this.player.pos);
     this.bleed(h.point, h.dir, 14);
@@ -821,6 +835,7 @@ export class Enemy extends Actor {
     this.vy = 0;
     this.cooldowns.clear();
     this.model.setOpacity(1);
+    this.model.setDissolve(0);
     this.model.root.visible = true;
     if (this.char) this.ctx.physics.setCharacterEnabled(this.char, !this.streamedOut);
     this.teleport(this.home, this.spawn.yaw ?? this.yaw);
@@ -900,9 +915,24 @@ export class Enemy extends Actor {
     }
     if (this.flinch > 0 && this.state !== 'dead') {
       this.anim.action.set(p);
-      const f = this.flinch * 0.25;
-      addJoint(this.anim.base, 'spine', -f, 0, f * 0.3);
-      addJoint(this.anim.base, 'head', -f, 0, 0);
+      // lean with the blow: back, forward or aside depending on where it landed
+      const f = this.flinch * this.flinch * 0.32;
+      addJoint(this.anim.base, 'spine', f * this.flinchZ, f * this.flinchX * 0.5, -f * this.flinchX * 0.8);
+      addJoint(this.anim.base, 'chest', f * this.flinchZ * 0.5, 0, -f * this.flinchX * 0.4);
+      addJoint(this.anim.base, 'head', f * this.flinchZ * 0.9, f * this.flinchX * 0.4, -f * this.flinchX * 0.6);
+    }
+    if (this.alive && this.state !== 'attack') {
+      // breathing: slow and deep at rest, ragged while hunting
+      const hunting = this.state === 'chase';
+      const br = Math.sin(this.t * (hunting ? 3.4 : 1.5) + this.home.x) * (hunting ? 0.05 : 0.03);
+      addJoint(this.anim.base, 'chest', br, 0, 0);
+      addJoint(this.anim.base, 'neck', -br * 0.6, 0, 0);
+      // a nervous twitch now and then: an arm and the head jerk, then settle
+      const tw = Math.max(0, noise1(this.t * 1.7, this.home.z + 5) - 0.72) * 4;
+      if (tw > 0) {
+        addJoint(this.anim.base, 'upperArmR', -tw * 0.3, 0, tw * 0.18);
+        addJoint(this.anim.base, 'head', 0, tw * 0.22, -tw * 0.18);
+      }
     }
     // unsettling idles: sudden head snaps and a crooked lean
     if ((this.state === 'idle' || this.state === 'patrol') && this.alive) {
@@ -919,7 +949,7 @@ export class Enemy extends Actor {
 
   override render(alpha: number): void {
     super.render(alpha);
-    this.dress?.update(1 / 60, this.t, this.alive, this.state === 'chase' || this.state === 'attack', this.model.root.visible);
+    this.dress?.update(1 / 60, this.t, this.alive, this.state === 'chase' || this.state === 'attack', this.model.root.visible, this.animStride === 1);
   }
 
   /** Called by a Screamer's wail: come running. */

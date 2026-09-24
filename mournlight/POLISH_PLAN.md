@@ -125,3 +125,26 @@ Causes found and fixed:
   melee, heavy attacks and arrows.
 - Left for later: the Pedlar is a single figure that moves to the last rested shrine rather than one per
   shrine. Gamepad navigation of the shop list uses the generic menu focus.
+
+### Milestone 5: partly done (2026-09-24), reduced scope
+Shipped:
+- Deaths: the collapse (death pose) now runs for 2.4 s, then the body **dissolves**. `dissolvePatch`
+  (fx/fog.ts) discards fragments by world-space value noise with a hot ember rim, and ash motes, grey mist
+  and embers lift off it. Carried pieces drop out at 30 %. The old per-frame opacity fade (which set
+  `needsUpdate` every frame and forced transparency sorting) is gone for creature materials.
+  `ModelInstance.setDissolve()` falls back to opacity for phantoms and imported models.
+- Directional hit reactions: `receiveHit` stores the push direction in the enemy's frame, and the flinch
+  leans spine, chest and head back, forward or sideways with the blow (it eases out quadratically).
+- Breathing (slow at rest, ragged while hunting) and occasional nervous twitches (arm and head jerk)
+  for all living enemies outside attacks.
+- Material variety per creature (`DressDef.skinRough`, `rust`): wet glistening skin (shambler, crawler,
+  mimic; stronger env reflections), dry bone (stalker), cloth (screamer), and rusted armour (knight).
+  Glowing eyes already exist for every creature (dress sprites).
+- LOD: the dripping detail only runs at full animation rate (under 30 m). Animation-rate and shadow LOD
+  from M1 still apply.
+Left (for a later session):
+- Re-sculpting silhouettes and proportions and adding layered geometry per creature and boss (models.ts
+  builders, ai/bosses.ts deep bosses). This is the biggest remaining item and was cut for budget.
+- Simplified far meshes for skinned enemies (true geometry LOD).
+- Deep bosses (Bone Choir, Hanged Warden) use custom meshes and do not get the dissolve.
+- The brief was cut off at "Use the LOD …", so anything specified after that point was never received.

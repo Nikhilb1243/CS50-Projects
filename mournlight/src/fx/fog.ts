@@ -127,3 +127,38 @@ export const rimPatch: OnBeforeCompile = (shader) => {
   }`,
     );
 };
+
+/**
+ * Death dissolve: fragments are eaten away by world-space value noise as `u.value` goes 0 → 1,
+ * with a hot ember rim on the edge that is about to go. Used by creature materials (per model).
+ */
+export function dissolvePatch(shader: THREE.WebGLProgramParametersWithUniforms, u: { value: number }): void {
+  shader.uniforms.uDissolve = u;
+  shader.vertexShader = shader.vertexShader
+    .replace('#include <common>', '#include <common>\nvarying vec3 vDisPos;')
+    .replace('#include <project_vertex>', '#include <project_vertex>\n  vDisPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+  shader.fragmentShader = shader.fragmentShader
+    .replace(
+      '#include <common>',
+      `#include <common>
+uniform float uDissolve;
+varying vec3 vDisPos;
+float mlDisHash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+float mlDisNoise(vec3 x) {
+  vec3 i = floor(x); vec3 f = fract(x); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(mlDisHash(i), mlDisHash(i + vec3(1, 0, 0)), f.x), mix(mlDisHash(i + vec3(0, 1, 0)), mlDisHash(i + vec3(1, 1, 0)), f.x), f.y),
+             mix(mix(mlDisHash(i + vec3(0, 0, 1)), mlDisHash(i + vec3(1, 0, 1)), f.x), mix(mlDisHash(i + vec3(0, 1, 1)), mlDisHash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+}`,
+    )
+    .replace(
+      '#include <clipping_planes_fragment>',
+      `#include <clipping_planes_fragment>
+  float disEdge = 0.0;
+  if (uDissolve > 0.0) {
+    float dn = mlDisNoise(vDisPos * 6.0) * 0.65 + mlDisNoise(vDisPos * 21.0) * 0.35;
+    if (dn < uDissolve * 1.08) discard;
+    disEdge = smoothstep(uDissolve * 1.08 + 0.07, uDissolve * 1.08, dn);
+  }`,
+    )
+    .replace('#include <tonemapping_fragment>', 'gl_FragColor.rgb += vec3(1.0, 0.42, 0.12) * disEdge * 1.6;\n#include <tonemapping_fragment>');
+}
