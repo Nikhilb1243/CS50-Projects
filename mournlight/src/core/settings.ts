@@ -43,6 +43,7 @@ export interface Settings {
   quality: Quality;
   toneMapping: ToneMap;
   fov: number;
+  showFps: boolean;
 }
 
 const KEY = 'mournlight.settings.v1';
@@ -57,6 +58,7 @@ export const DEFAULT_SETTINGS: Settings = {
   quality: 'medium',
   toneMapping: 'aces',
   fov: 62,
+  showFps: false,
 };
 
 type Listener = (s: Settings) => void;

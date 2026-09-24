@@ -31,7 +31,7 @@ import { HazardSystem } from './combat/hazards';
 import { NoiseBus } from './ai/noise';
 import { World } from './world/world';
 import { Player } from './entities/player';
-import type { Enemy } from './ai/enemy';
+import { Enemy } from './ai/enemy';
 import { createEnemy } from './ai/creatures';
 import type { Boss } from './ai/boss';
 import { ENEMIES_LAYOUT, BOSS, PLAYER_START, REGIONS, HINTS, type RegionDef } from './world/layout';
@@ -215,9 +215,9 @@ export class Game {
     this.gpu = new GpuParticles(this.scene);
     this.particles.setViewport(window.innerHeight * this.renderer.getPixelRatio(), this.cam.camera.fov);
     this.world = new World(this.scene, this.physics, this.quality);
-    await this.world.build(progress);
-    progress(0.96, 'Composing the dirge');
-    await this.audio.init(this.scene, (p) => progress(0.96 + p * 0.03, 'Composing the dirge'));
+    await this.world.build((p, label) => progress(p * 0.84, label));
+    progress(0.84, 'Composing the dirge');
+    await this.audio.init(this.scene, (p) => progress(0.84 + p * 0.04, 'Composing the dirge'));
     this.sky = new Sky(this.scene, MOON_DIR);
     this.envTex = buildEnvironment(this.renderer, MOON_DIR);
     this.post = new PostFX(this.renderer, this.scene, this.cam.camera, QUALITY_PROFILES[this.quality], settings.value.toneMapping);
@@ -315,17 +315,56 @@ export class Game {
     );
     this.menus.setContinueAvailable(!!loadSave());
     this.applyQuality();
+    const syncFps = (on: boolean): void => {
+      this.debugOverlay.flags.fps = on;
+      this.debugOverlay.sync();
+    };
+    syncFps(settings.value.showFps);
     settings.onChange((v) => {
       if (v.quality !== this.appliedQuality) this.applyQuality();
       this.post.setToneMapping(v.toneMapping);
+      if (v.showFps !== this.debugOverlay.flags.fps) syncFps(v.showFps);
     });
-    // Warm up shaders so the first frame of play does not hitch
-    this.renderer.compile(this.scene, this.cam.camera);
+    // Precompile every shader behind the loading bar so the first sight of an enemy or effect never stalls
+    await this.warmShaders((p) => progress(0.88 + p * 0.12, 'Kindling the shaders'));
     this.mode = 'title';
     this.fadeTarget = 0;
     this.menus.show('title');
     this.hud.setVisible(false);
     this.devParams();
+  }
+
+  /**
+   * Compile all scene materials in small batches (parallel compile where the driver supports
+   * it), yielding between batches so the loading bar keeps moving. Subtrees holding lights are
+   * left to the final whole-scene pass, which keeps the light count, and so the program
+   * variants, identical to what gameplay will ask for.
+   */
+  private async warmShaders(onProgress: (p: number) => void): Promise<void> {
+    const cam = this.cam.camera;
+    const hasLight = (o: THREE.Object3D): boolean => {
+      let found = false;
+      o.traverse((c) => (found ||= (c as THREE.Light).isLight === true));
+      return found;
+    };
+    const kids = this.scene.children.filter((c) => !hasLight(c));
+    const n = Math.min(16, kids.length);
+    const per = Math.ceil(kids.length / Math.max(1, n));
+    const yieldFrame = (): Promise<void> => new Promise((r) => requestAnimationFrame(() => r()));
+    const parallel = this.renderer.extensions.has('KHR_parallel_shader_compile');
+    const compile = async (o: THREE.Object3D, target: THREE.Scene | null): Promise<void> => {
+      if (parallel) await this.renderer.compileAsync(o, cam, target);
+      else this.renderer.compile(o, cam, target);
+    };
+    for (let i = 0; i < n; i++) {
+      const group = kids.slice(i * per, (i + 1) * per);
+      for (const o of group) await compile(o, this.scene);
+      onProgress((i + 1) / (n + 1));
+      await yieldFrame();
+    }
+    await compile(this.scene, null);
+    onProgress(1);
+    await yieldFrame();
   }
 
   /** Development URL parameters: ?autostart&tp=<region>&yaw=<rad>&nolantern&hitboxes&god */
@@ -1258,6 +1297,9 @@ export class Game {
     this.updateAtmosphere(realDt);
     const camPos = this.cam.camera.position;
     const fogDist = Math.min(170, 2.6 / Math.max(0.012, this.fogDensity));
+    // enemies stream in and out just beyond the point where the fog is fully opaque
+    Enemy.viewDist = fogDist + 6;
+    Enemy.wakeDist = Math.min(80, fogDist + 6);
     this.world.update(realDt, this.time.real, camPos, this.focus, alpha, fogDist);
     this.particles.update(scaledDt);
     this.gpu.update(scaledDt, this.fogDensity);

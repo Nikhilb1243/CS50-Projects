@@ -98,6 +98,14 @@ export class Enemy extends Actor {
   /** Hold poses for N simulation steps: twitchy, stop-motion movement. */
   protected stopMotion = 0;
   private smCount = 0;
+  /** Streaming radii, refreshed every frame from the fog range (Game.render). */
+  static viewDist = 110;
+  static wakeDist = 80;
+  /** Out of the scene graph and physics world: beyond the fog, nothing to see or simulate. */
+  streamedOut = false;
+  private animStride = 1;
+  private animTick = 0;
+  private animAcc = 0;
 
   constructor(ctx: GameContext, spawn: EnemySpawn, opts: { phantom?: boolean; def?: EnemyDef } = {}) {
     const def = opts.def ?? ENEMIES[spawn.type];
@@ -160,9 +168,13 @@ export class Enemy extends Actor {
     if (this.removed) return;
     const p = this.player;
     const distToPlayer = this.pos.distanceTo(p.pos);
-    this.sleeping = distToPlayer > 80 && this.state !== 'dead';
-    this.model.root.visible = distToPlayer < 110;
+    // streaming: past the fog wall the enemy leaves the scene and the physics world (hysteresis so it never flickers)
+    const out = this.state !== 'dead' && (this.streamedOut ? distToPlayer > Enemy.viewDist : distToPlayer > Enemy.viewDist + 10);
+    if (out !== this.streamedOut) this.setStreamed(out);
+    this.sleeping = out || (distToPlayer > Enemy.wakeDist && this.state !== 'dead');
     this.model.setShadows(distToPlayer < 28);
+    // animation LOD: distant enemies update their rig at a lower rate
+    this.animStride = this.state === 'attack' || this.state === 'dead' || distToPlayer < 30 ? 1 : distToPlayer < 55 ? 2 : 3;
     if (this.sleeping) {
       this.breath.stop();
       return;
@@ -188,9 +200,22 @@ export class Enemy extends Actor {
     }
     this.think(dt, distToPlayer);
     this.audioUpdate(distToPlayer);
-    this.animate(dt);
+    this.animAcc += dt;
+    if (this.animStride === 1 || ++this.animTick % this.animStride === 0) {
+      this.animate(this.animAcc);
+      this.animAcc = 0;
+    }
     this.syncSim();
     if (this.atk) this.attackSweep();
+  }
+
+  private setStreamed(out: boolean): void {
+    this.streamedOut = out;
+    if (out) {
+      this.breath.stop();
+      this.model.root.removeFromParent();
+    } else this.ctx.scene.add(this.model.root);
+    if (this.char && this.alive) this.ctx.physics.setCharacterEnabled(this.char, !out);
   }
 
   /** Stalker override: freezes while observed. */
@@ -797,7 +822,7 @@ export class Enemy extends Actor {
     this.cooldowns.clear();
     this.model.setOpacity(1);
     this.model.root.visible = true;
-    if (this.char) this.ctx.physics.setCharacterEnabled(this.char, true);
+    if (this.char) this.ctx.physics.setCharacterEnabled(this.char, !this.streamedOut);
     this.teleport(this.home, this.spawn.yaw ?? this.yaw);
     this.setState(this.spawn.patrol ? 'patrol' : 'idle');
     this.patrolIdx = 0;

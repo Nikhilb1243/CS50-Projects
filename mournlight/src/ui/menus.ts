@@ -366,14 +366,15 @@ export class Menus {
     };
     range('Mouse sensitivity', 'mouseSensitivity', 0.2, 3, 0.05, (v) => v.toFixed(2));
     range('Gamepad sensitivity', 'padSensitivity', 0.3, 2.5, 0.05, (v) => v.toFixed(2));
-    {
+    const check = (label: string, key: 'invertY' | 'showFps'): void => {
       const row = el('div', 'row', p);
-      el('span', '', row, 'Invert camera Y');
+      el('span', '', row, label);
       const input = el('input', '', el('span', 'v', row)) as HTMLInputElement;
       input.type = 'checkbox';
-      input.addEventListener('change', () => settings.set('invertY', input.checked));
-      this.settingRows.push({ sync: () => (input.checked = settings.value.invertY) });
-    }
+      input.addEventListener('change', () => settings.set(key, input.checked));
+      this.settingRows.push({ sync: () => (input.checked = settings.value[key]) });
+    };
+    check('Invert camera Y', 'invertY');
     range('Field of view', 'fov', 50, 85, 1, (v) => `${Math.round(v)}°`);
     range('Master volume', 'masterVolume', 0, 1, 0.05, (v) => `${Math.round(v * 100)}`);
     range('Effects volume', 'sfxVolume', 0, 1, 0.05, (v) => `${Math.round(v * 100)}`);
@@ -388,6 +389,7 @@ export class Menus {
     };
     select('Graphics quality', 'quality', [['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['ultra', 'Ultra']]);
     select('Tone mapping', 'toneMapping', [['aces', 'ACES filmic'], ['agx', 'AgX']]);
+    check('Show FPS counter', 'showFps');
     const m = el('div', 'menu', p);
     m.style.marginTop = '20px';
     this.button(m, 'Back', () => this.back());

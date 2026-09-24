@@ -4,6 +4,7 @@ import type RAPIER from '@dimforge/rapier3d-compat';
 import { Rng, fbm2, valueNoise2 } from '../core/math';
 import type { Physics } from '../core/physics';
 import type { MaterialLibrary } from './materials';
+import { ChunkStreamer } from './streaming';
 
 const _up = new THREE.Vector3(0, 1, 0);
 const _q = new THREE.Quaternion();
@@ -23,8 +24,10 @@ function limb(parts: THREE.BufferGeometry[], from: THREE.Vector3, dir: THREE.Vec
 }
 
 /** Procedural dead tree: bent trunk with recursive bare branches. */
-export function makeTreeGeometry(seed: number): THREE.BufferGeometry {
+export function makeTreeGeometry(seed: number, lod = false): THREE.BufferGeometry {
   const rng = new Rng(seed);
+  // low detail: fewer sides and no twigs; the rng sequence is untouched so the silhouette matches
+  const sides = (n: number): number => (lod ? Math.max(3, n - 3) : n);
   const parts: THREE.BufferGeometry[] = [];
   const height = rng.range(6.5, 11.5);
   const baseR = rng.range(0.28, 0.46);
@@ -35,19 +38,19 @@ export function makeTreeGeometry(seed: number): THREE.BufferGeometry {
   // root flare
   for (let i = 0; i < 4; i++) {
     const a = (i / 4) * Math.PI * 2 + rng.next();
-    limb(parts, new THREE.Vector3(0, 0.4, 0), new THREE.Vector3(Math.cos(a), -0.45, Math.sin(a)), 1.1, baseR * 0.55, 0.05, 5);
+    limb(parts, new THREE.Vector3(0, 0.4, 0), new THREE.Vector3(Math.cos(a), -0.45, Math.sin(a)), 1.1, baseR * 0.55, 0.05, sides(5));
   }
   for (let i = 0; i < segs; i++) {
     const len = height / segs;
     const r0 = baseR * (1 - i / segs) + 0.04;
     const r1 = baseR * (1 - (i + 1) / segs) + 0.03;
-    const next = limb(parts, p, dir, len, r0, r1, 7);
+    const next = limb(parts, p, dir, len, r0, r1, sides(7));
     trunkPts.push({ p: p.clone(), r: r0, dir: dir.clone() });
     p = next;
     dir = dir.add(new THREE.Vector3(rng.range(-0.3, 0.3), 0, rng.range(-0.3, 0.3))).normalize();
   }
   const branch = (from: THREE.Vector3, d: THREE.Vector3, len: number, r: number, depth: number): void => {
-    const end = limb(parts, from, d, len, r, r * 0.4, 5);
+    const end = lod && depth < 2 && len < 1.2 ? from.clone().addScaledVector(d.clone().normalize(), len) : limb(parts, from, d, len, r, r * 0.4, sides(5));
     if (depth <= 0 || len < 0.6) return;
     const n = rng.int(1, 2);
     for (let i = 0; i < n; i++) {
@@ -153,13 +156,15 @@ function makeBones(seed: number): THREE.BufferGeometry {
 
 /** Instanced props split into spatial chunks for culling. */
 export class InstancedField {
-  private chunks = new Map<string, { mesh: THREE.InstancedMesh; center: THREE.Vector3 }>();
+  private chunks = new Map<string, { mesh: THREE.InstancedMesh; lo: THREE.InstancedMesh | null; center: THREE.Vector3; far: boolean }>();
   private pending = new Map<string, THREE.Matrix4[]>();
   constructor(
     private geo: THREE.BufferGeometry,
     private mat: THREE.Material,
     private chunk = 40,
     private shadows = true,
+    /** Optional low-detail geometry swapped in for whole chunks beyond LOD_DIST. */
+    private lodGeo: THREE.BufferGeometry | null = null,
   ) {}
 
   add(m: THREE.Matrix4): void {
@@ -174,7 +179,7 @@ export class InstancedField {
     list.push(m.clone());
   }
 
-  finish(scene: THREE.Scene): void {
+  finish(scene: THREE.Scene, streamer?: ChunkStreamer): void {
     for (const [k, list] of this.pending) {
       const mesh = new THREE.InstancedMesh(this.geo, this.mat, list.length);
       list.forEach((m, i) => mesh.setMatrixAt(i, m));
@@ -182,19 +187,38 @@ export class InstancedField {
       mesh.computeBoundingSphere();
       mesh.castShadow = this.shadows;
       mesh.receiveShadow = true;
-      const [cx, cz] = k.split('|').map(Number);
-      scene.add(mesh);
-      this.chunks.set(k, { mesh, center: new THREE.Vector3((cx + 0.5) * this.chunk, 0, (cz + 0.5) * this.chunk) });
+      const group = new THREE.Group();
+      group.add(mesh);
+      let lo: THREE.InstancedMesh | null = null;
+      if (this.lodGeo) {
+        // the low-detail mesh shares the instance buffer, so the swap costs nothing
+        lo = new THREE.InstancedMesh(this.lodGeo, this.mat, list.length);
+        lo.instanceMatrix = mesh.instanceMatrix;
+        lo.boundingSphere = mesh.boundingSphere;
+        // far chunks skip the shadow pass: the outer cascades cannot resolve twigs through the fog
+        lo.castShadow = false;
+        lo.receiveShadow = true;
+        lo.visible = false;
+        group.add(lo);
+      }
+      scene.add(group);
+      const bs = mesh.boundingSphere!;
+      streamer?.add(group, scene, bs.center.x, bs.center.z, bs.radius);
+      this.chunks.set(k, { mesh, lo, center: bs.center.clone(), far: false });
     }
     this.pending.clear();
   }
 
-  cull(cam: THREE.Vector3, maxDist: number): void {
-    const md = maxDist + this.chunk * 0.75;
-    for (const { mesh, center } of this.chunks.values()) {
-      const dx = center.x - cam.x;
-      const dz = center.z - cam.z;
-      mesh.visible = dx * dx + dz * dz < md * md;
+  /** Swap chunks between full and low detail by distance (with a little hysteresis). */
+  lod(cam: THREE.Vector3): void {
+    for (const c of this.chunks.values()) {
+      if (!c.lo) continue;
+      const d = Math.hypot(c.center.x - cam.x, c.center.z - cam.z) - (c.mesh.boundingSphere?.radius ?? 0) * 0.5;
+      const far = c.far ? d > LOD_DIST - 4 : d > LOD_DIST + 4;
+      if (far === c.far) continue;
+      c.far = far;
+      c.mesh.visible = !far;
+      c.lo.visible = far;
     }
   }
 
@@ -205,28 +229,34 @@ export class InstancedField {
   }
 }
 
+/** Distance beyond which prop chunks switch to their low-detail mesh. */
+const LOD_DIST = 40;
+
 export interface PropSet {
   trees: InstancedField[];
   rocks: InstancedField[];
   graves: InstancedField[];
   reeds: InstancedField;
   bones: InstancedField;
+  streamer: ChunkStreamer;
   cull(cam: THREE.Vector3, maxDist: number): void;
 }
 
 export function createPropSet(mats: MaterialLibrary): PropSet {
-  const treeGeos = [11, 23, 37, 51].map(makeTreeGeometry);
+  const treeSeeds = [11, 23, 37, 51];
   const rockGeos = [3, 9, 17].map(makeRockGeometry);
   const graveGeos = [0, 1, 2].map(makeGravestone);
   const reedMat = new THREE.MeshStandardMaterial({ color: 0x3b3a2c, roughness: 1, side: THREE.DoubleSide });
   const set: PropSet = {
-    trees: treeGeos.map((g) => new InstancedField(g, mats.bark.material, 40)),
+    trees: treeSeeds.map((s) => new InstancedField(makeTreeGeometry(s), mats.bark.material, 40, true, makeTreeGeometry(s, true))),
     rocks: rockGeos.map((g) => new InstancedField(g, mats.rock.material, 48)),
     graves: graveGeos.map((g) => new InstancedField(g, mats.stone.material, 48)),
     reeds: new InstancedField(makeReeds(5), reedMat, 40, false),
     bones: new InstancedField(makeBones(8), mats.bone.material, 48, false),
+    streamer: new ChunkStreamer(12),
     cull(cam: THREE.Vector3, maxDist: number) {
-      for (const f of [...set.trees, ...set.rocks, ...set.graves, set.reeds, set.bones]) f.cull(cam, maxDist);
+      set.streamer.update(cam, maxDist);
+      for (const f of set.trees) f.lod(cam);
     },
   };
   return set;

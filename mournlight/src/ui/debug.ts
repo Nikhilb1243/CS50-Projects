@@ -25,6 +25,7 @@ export class DebugOverlay {
   private acc = 0;
   private fps = 0;
   private worst = 0;
+  private lastT = 0;
   private lines: THREE.LineSegments;
   private positions = new Float32Array(MAX_VERTS * 3);
   private colors = new Float32Array(MAX_VERTS * 3);
@@ -107,9 +108,13 @@ export class DebugOverlay {
   }
 
   update(realDt: number, extra: string): void {
+    // wall-clock frame time: the loop's realDt is clamped, which would flatter slow frames
+    const now = performance.now();
+    const ft = this.lastT > 0 ? (now - this.lastT) / 1000 : realDt;
+    this.lastT = now;
     this.frames++;
-    this.acc += realDt;
-    this.worst = Math.max(this.worst, realDt);
+    this.acc += ft;
+    this.worst = Math.max(this.worst, ft);
     if (this.acc >= 0.5) {
       this.fps = this.frames / this.acc;
       this.fpsEl.textContent = `${this.fps.toFixed(0)} fps · worst ${(this.worst * 1000).toFixed(1)} ms`;

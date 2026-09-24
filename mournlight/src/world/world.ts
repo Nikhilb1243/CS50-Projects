@@ -6,6 +6,7 @@ import { generateTextures, scrawlTexture, type TextureLibrary } from './textures
 import { createMaterials, type MaterialLibrary } from './materials';
 import { buildTerrain, terrainHeight, type TerrainResult } from './terrain';
 import { StaticBuilder } from './builder';
+import { ChunkStreamer } from './streaming';
 import { LightManager, MOON_OFFSET, tonguesFor, type FlameSource } from './lights';
 import { LightShafts } from './shafts';
 import { createPropSet, buildCage, makeBarrel, makeCrate, scatter, type Cage, type DynamicProp, type PropSet } from './props';
@@ -52,6 +53,8 @@ export class World {
   mats!: MaterialLibrary;
   terrain!: TerrainResult;
   builder!: StaticBuilder;
+  /** Streams the merged static chunks in and out with the fog range. */
+  readonly chunks = new ChunkStreamer(14);
   lights: LightManager;
   props!: PropSet;
   shrines: Shrine[] = [];
@@ -143,11 +146,17 @@ export class World {
 
     await tick(0.86, 'Sealing the crypt');
     this.builder.finish(this.scene);
-    this.props.trees.forEach((f) => f.finish(this.scene));
-    this.props.rocks.forEach((f) => f.finish(this.scene));
-    this.props.graves.forEach((f) => f.finish(this.scene));
-    this.props.reeds.finish(this.scene);
-    this.props.bones.finish(this.scene);
+    const ps = this.props.streamer;
+    this.props.trees.forEach((f) => f.finish(this.scene, ps));
+    this.props.rocks.forEach((f) => f.finish(this.scene, ps));
+    this.props.graves.forEach((f) => f.finish(this.scene, ps));
+    this.props.reeds.finish(this.scene, ps);
+    this.props.bones.finish(this.scene, ps);
+    // merged static chunks stream too, and hand back their GPU buffers when far behind
+    for (const m of this.builder.meshes) {
+      const bs = m.geometry.boundingSphere!;
+      this.chunks.add(m, m.parent ?? this.scene, bs.center.x, bs.center.z, bs.radius, true);
+    }
     await tick(0.95, 'The fog settles');
   }
 
@@ -494,12 +503,7 @@ export class World {
     const nm = (this.water.material as THREE.MeshStandardMaterial).normalMap;
     if (nm) nm.offset.set(t * 0.012, t * 0.007);
     this.props.cull(camPos, fogDist);
-    for (const m of this.builder.meshes) {
-      const bs = m.geometry.boundingSphere!;
-      const dx = bs.center.x - camPos.x;
-      const dz = bs.center.z - camPos.z;
-      m.visible = Math.hypot(dx, dz) - bs.radius < fogDist + 10;
-    }
+    this.chunks.update(camPos, fogDist + 10);
     // heart pulse
     const pulse = this.arenaPhase === 2 ? 0.5 + 0.5 * Math.pow(Math.sin(t * 2.4), 8) : 0.1;
     const hm = this.heart.material as THREE.MeshStandardMaterial;
