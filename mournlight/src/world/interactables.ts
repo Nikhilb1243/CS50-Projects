@@ -9,7 +9,7 @@ import type { DoorDef, ItemKind, ShrineDef } from './layout';
 import { patchFog } from '../fx/fog';
 import { clamp01, easeInOut } from '../core/math';
 
-export type InteractKind = 'shrine' | 'door' | 'fogwall' | 'item' | 'remnant' | 'passage';
+export type InteractKind = 'shrine' | 'door' | 'fogwall' | 'item' | 'remnant' | 'passage' | 'merchant';
 
 /** A stair, rift or lift that carries the Revenant between distant regions. */
 export class Passage implements Interactable {

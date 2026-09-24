@@ -106,3 +106,22 @@ Causes found and fixed:
   blue for optional deeds). Unlit shrines smoulder since M2.
 - Left for later: the world stays physically open (no hard gates). "Open the way" is the guidance trail and the
   next objective, not a barrier that drops. There are no candle props at non-shrine objectives.
+
+### Milestone 4: done (2026-09-24)
+- `world/merchant.ts` **The Candle-Pedlar** (original): a stooped hooded trader built from primitives, with
+  a ragged lathe robe, a deep hood ringed with wax stubs, amber pinprick eyes, a pack of wares and a lantern
+  on a crooked pole (a real flame light). Idle motion: breathing stoop, sway, head that follows the player,
+  twitches, swinging lantern. It mumbles with a new procedural `murmur` voice (formant syllables, never
+  words) when the player is within 9 m, and greets on open and purchase. It waits beside the last rested
+  shrine, placed clear of walls with ray checks, and interacts via "Barter with the Candle-Pedlar".
+- `data/shop.ts`: stock and prices. Weapons (Gloamstring 900, Hush and Lull 1400, Coffin-Lid Slab 1800)
+  unlock once their region is cleared, and only if not already found. Tempering +1..+5 (+8 % damage each,
+  350 / 1020 / 1920 / 3000 / 4230), where each cleared region allows one more step. Arrows (10 for 90) if
+  you own the bow. Tallow Vessels (+1 draught, 700 / 1400 / 2100, one per cleared region, max 3).
+- Shop UI (menus `shop` screen): item list with prices or lock reasons, and a card with a rotating 3D preview
+  (`ui/preview.ts`, a small separate renderer only active while the shop is open), description,
+  equipped → with-this stat comparison (green/red) and a Buy button. Esc or Leave closes it.
+- Upgrades persist (`Progress.upgrades`, `shopDraughts`, saved) and feed `Player.damageMult`, so they cover
+  melee, heavy attacks and arrows.
+- Left for later: the Pedlar is a single figure that moves to the last rested shrine rather than one per
+  shrine. Gamepad navigation of the shop list uses the generic menu focus.

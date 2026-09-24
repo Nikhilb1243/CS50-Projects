@@ -159,3 +159,17 @@ export class WeaponRig {
     this.bowParts.arrow.position.y = -0.45 + k * 0.5;
   }
 }
+
+/** A standalone copy of a weapon's mesh (for the shop preview). */
+export function weaponMesh(id: WeaponId): THREE.Object3D {
+  switch (id) {
+    case 'greatsword':
+      return greatsword();
+    case 'daggers':
+      return dagger();
+    case 'bow':
+      return bow().group;
+    default:
+      return longsword();
+  }
+}

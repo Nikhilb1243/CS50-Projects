@@ -84,8 +84,11 @@ export class World {
     this.lights = new LightManager(scene, quality);
   }
 
+  /** Interactables owned elsewhere (the Candle-Pedlar). */
+  readonly extraInteractables: Interactable[] = [];
+
   get interactables(): Interactable[] {
-    return [...this.shrines, ...this.doors, this.fogWall, ...this.items, this.remnant, ...this.passages];
+    return [...this.shrines, ...this.doors, this.fogWall, ...this.items, this.remnant, ...this.passages, ...this.extraInteractables];
   }
 
   async build(progress: (p: number, label: string) => void): Promise<void> {

@@ -18,6 +18,7 @@ import type { Quality } from '../core/settings';
 import { BOW, ULT_GAIN, ULT_MAX, WEAPONS, WEAPON_ORDER, type WeaponDef, type WeaponId } from '../data/weapons';
 import { WeaponRig } from './weapons';
 import { SwingTrail } from '../fx/trails';
+import { UPGRADE_STEP } from '../data/shop';
 
 export type PState =
   | 'move'
@@ -47,6 +48,10 @@ export interface Progress {
   weapons: WeaponId[];
   weapon: WeaponId;
   arrows: number;
+  /** Temper level (0..5) bought from the Candle-Pedlar, per weapon. */
+  upgrades?: Partial<Record<WeaponId, number>>;
+  /** Tallow Vessels bought (extra draught capacity). */
+  shopDraughts?: number;
 }
 
 interface ActiveAttack {
@@ -263,7 +268,7 @@ export class Player extends Actor {
   }
 
   get damageMult(): number {
-    return damageMultiplier(this.progress.attrs, this.progress.dmgBonus);
+    return damageMultiplier(this.progress.attrs, this.progress.dmgBonus) * (1 + UPGRADE_STEP * (this.progress.upgrades?.[this.progress.weapon] ?? 0));
   }
 
   get iframes(): boolean {

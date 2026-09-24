@@ -618,6 +618,31 @@ export const SOUNDS: Record<string, SoundDef> = {
       formantVoice(d, sr, r, () => 41, [[300, 4]], (t) => bell(t - 2.2, 2.0) * 0.4, 0.5, 1);
     },
   },
+  // the Candle-Pedlar's mumbling: voiced syllables that drift between vowels but never make words
+  murmur: {
+    dur: 2.4, variants: 4, peak: 0.5,
+    gen: (d, sr, r) => {
+      const syl: [number, number][] = [];
+      let t0 = 0.08;
+      while (t0 < 2.1) {
+        const len = 0.1 + Math.abs(r()) * 0.22;
+        syl.push([t0, len]);
+        t0 += len + 0.03 + Math.abs(r()) * 0.14;
+      }
+      const vowels: [number, number][][] = [[[520, 5], [920, 6]], [[380, 5], [1850, 8]], [[640, 5], [1080, 6]], [[310, 5], [820, 6]]];
+      const pitch = 88 + Math.abs(r()) * 18;
+      vowels.forEach((v, k) => {
+        const env = (t: number): number => {
+          let e = 0;
+          syl.forEach(([s0, l], i) => {
+            if (i % vowels.length === k) e = Math.max(e, bell(t - s0, l));
+          });
+          return e;
+        };
+        formantVoice(d, sr, r, (t) => pitch + Math.sin(t * 2.7) * 7 - t * 5, v, env, 0.45, 1.3);
+      });
+    },
+  },
   whisper: {
     dur: 2.0, variants: 4, peak: 0.45,
     gen: (d, sr, r) => {

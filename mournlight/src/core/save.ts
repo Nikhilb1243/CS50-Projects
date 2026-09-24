@@ -23,6 +23,8 @@ export interface SaveData {
   explored?: string;
   deepBosses?: string[];
   regions?: import('../world/progression').LedgerSave;
+  upgrades?: Partial<Record<import('../data/weapons').WeaponId, number>>;
+  shopDraughts?: number;
 }
 
 const KEY = 'mournlight.save.v1';

@@ -16,6 +16,10 @@ import { PostFX } from './fx/post';
 import { installFogChunks, fogUniforms, rimUniforms } from './fx/fog';
 import { regionLighting } from './data/lighting';
 import { RegionLedger, TipBook, BOSS_HINTS, REGION_CLEAR, formatTime } from './world/progression';
+import { Merchant } from './world/merchant';
+import { ItemPreview } from './ui/preview';
+import { shopStock, compareRows, ARROW_BUNDLE, type ShopState } from './data/shop';
+import type { ShopView } from './ui/menus';
 import { HorrorDirector } from './fx/horror';
 import { Sky } from './fx/sky';
 import { GpuParticles } from './fx/gpuparticles';
@@ -137,6 +141,8 @@ export class Game {
   private clearQueue: string[] = [];
   private clearDelay = 0;
   private markerT = 0;
+  private merchant!: Merchant;
+  private preview = new ItemPreview();
   private deepBosses: DeepBoss[] = [];
   private cineBoss: DeepBoss | null = null;
   private lightningT = 8;
@@ -171,6 +177,12 @@ export class Game {
       continueGame: () => this.continueGame(),
       resume: () => this.resume(),
       whereToGo: () => this.whereToGo(),
+      shop: () => this.shopView(),
+      buy: (id) => this.buy(id),
+      shopPreview: (e) => {
+        this.preview.setItem(e);
+        return this.preview.canvas;
+      },
       quitToTitle: () => this.quitToTitle(),
       levelUp: (a, cost) => this.applyLevelUp(a, cost),
       travel: (id) => this.travel(id),
@@ -218,6 +230,8 @@ export class Game {
     await this.world.build((p, label) => progress(p * 0.84, label));
     progress(0.84, 'Composing the dirge');
     await this.audio.init(this.scene, (p) => progress(0.84 + p * 0.04, 'Composing the dirge'));
+    this.merchant = new Merchant(this.scene, this.world.lights);
+    this.world.extraInteractables.push(this.merchant);
     this.sky = new Sky(this.scene, MOON_DIR);
     this.envTex = buildEnvironment(this.renderer, MOON_DIR);
     this.post = new PostFX(this.renderer, this.scene, this.cam.camera, QUALITY_PROFILES[this.quality], settings.value.toneMapping);
@@ -454,6 +468,8 @@ export class Game {
     p.recalcStats(true);
     this.ledger.load(undefined);
     this.bossDeaths.clear();
+    this.lastShrine = null;
+    this.merchant.hide();
     p.respawn(new THREE.Vector3(...PLAYER_START.p), PLAYER_START.yaw);
     this.fadeAmt = 1;
     this.fadeTarget = 0;
@@ -482,7 +498,7 @@ export class Game {
   private applySave(s: SaveData): void {
     const p = this.player;
     const weapons = (s.weapons ?? ['longsword']) as WeaponId[];
-    p.progress = { attrs: { ...s.attrs }, marrow: s.marrow, draughtsMax: s.draughtsMax, dmgBonus: s.dmgBonus, fuelMax: s.fuelMax, weapons, weapon: (s.weapon as WeaponId) ?? 'longsword', arrows: s.arrows ?? BOW.maxArrows };
+    p.progress = { attrs: { ...s.attrs }, marrow: s.marrow, draughtsMax: s.draughtsMax, dmgBonus: s.dmgBonus, fuelMax: s.fuelMax, weapons, weapon: (s.weapon as WeaponId) ?? 'longsword', arrows: s.arrows ?? BOW.maxArrows, upgrades: { ...(s.upgrades ?? {}) }, shopDraughts: s.shopDraughts ?? 0 };
     p.equip(p.progress.weapon);
     this.notesRead = new Set(s.notesRead ?? []);
     this.regionsVisited = new Set(s.regionsVisited ?? []);
@@ -496,6 +512,7 @@ export class Game {
     p.lantern.drainMult = s.fuelMax > PLAYER_TUNING.lanternFuelMax ? 0.8 : 1;
     for (const sh of this.world.shrines) if (s.shrinesLit.includes(sh.def.id)) sh.kindle();
     this.lastShrine = this.world.shrines.find((sh) => sh.def.id === s.lastShrine) ?? null;
+    this.placeMerchant();
     for (const d of this.world.doors) if (s.doorsOpen.includes(d.def.id)) d.openDoor(true);
     for (const it of this.world.items) {
       if (s.itemsTaken.includes(it.id)) {
@@ -548,6 +565,8 @@ export class Game {
       explored: this.mapView.serialize(),
       deepBosses: this.deepBosses.filter((b) => !b.alive).map((b) => b.id),
       regions: this.ledger.serialize(),
+      upgrades: { ...(p.progress.upgrades ?? {}) },
+      shopDraughts: p.progress.shopDraughts ?? 0,
     });
   }
 
@@ -563,7 +582,7 @@ export class Game {
   }
 
   private resume(): void {
-    if (this.menus.current === 'victory' || this.menus.current === 'cleared') {
+    if (this.menus.current === 'victory' || this.menus.current === 'cleared' || this.menus.current === 'shop') {
       if (this.menus.current === 'cleared') this.guideBoost = 10;
       this.menus.show(null);
       this.hud.setVisible(true);
@@ -762,6 +781,9 @@ export class Game {
         });
         break;
       }
+      case 'merchant':
+        this.openShop();
+        break;
       case 'passage': {
         const ps = target as Passage;
         p.startInteract(0.5, null, () => {
@@ -801,6 +823,7 @@ export class Game {
     const p = this.player;
     p.startRest();
     this.lastShrine = sh;
+    this.placeMerchant();
     this.audio.play('rest', { volume: 0.8 });
     this.fadeTarget = 0.65;
     window.setTimeout(() => {
@@ -859,6 +882,7 @@ export class Game {
       this.player.respawn(pos, yaw);
       this.cam.snapBehind(yaw);
       this.lastShrine = sh;
+      this.placeMerchant();
       this.save();
       this.fadeTarget = 0;
       this.menus.openShrine(sh.def.name, this.litShrines(), this.levelInfo());
@@ -978,6 +1002,7 @@ export class Game {
     this.abilities.step(dt);
     this.physics.step();
     this.world.step();
+    this.merchant.update(dt, this.player.pos, this.audio);
     if (this.mode === 'playing') {
       this.playTime += dt;
       this.ledger.tick(dt, this.region.id);
@@ -1045,6 +1070,8 @@ export class Game {
         return 'Reclaim your Marrow';
       case 'passage':
         return (it as Passage).def.label;
+      case 'merchant':
+        return 'Barter with the Candle-Pedlar';
     }
   }
 
@@ -1194,6 +1221,80 @@ export class Game {
     });
     this.clearDelay = 1;
     this.save();
+  }
+
+  // ---------------------------------------------------------------------------
+  // The Candle-Pedlar
+  // ---------------------------------------------------------------------------
+  /** The Pedlar waits beside whichever candle the player last rested at. */
+  private placeMerchant(): void {
+    if (this.lastShrine) this.merchant.placeAt(this.lastShrine, this.physics);
+    else this.merchant.hide();
+  }
+
+  private openShop(): void {
+    this.mode = 'menu';
+    this.input.gameplayEnabled = false;
+    this.input.exitPointerLock();
+    this.hud.setVisible(false);
+    this.hud.clearTransient();
+    this.merchant.greet(this.audio);
+    this.menus.openShop();
+  }
+
+  private shopState(): ShopState {
+    const pr = this.player.progress;
+    return {
+      owned: pr.weapons,
+      equipped: pr.weapon,
+      upgrades: pr.upgrades ?? {},
+      arrows: pr.arrows,
+      shopDraughts: pr.shopDraughts ?? 0,
+      draughtsMax: pr.draughtsMax,
+      cleared: new Set(Object.keys(REGION_CLEAR).filter((id) => this.ledger.get(id).cleared)),
+    };
+  }
+
+  private regionName = (id: string): string => REGIONS.find((r) => r.id === id)?.name ?? id;
+
+  private shopView(): ShopView {
+    const st = this.shopState();
+    return { marrow: this.player.progress.marrow, items: shopStock(st, this.regionName), compare: (e) => compareRows(e, st) };
+  }
+
+  private buy(id: string): string | null {
+    const e = shopStock(this.shopState(), this.regionName).find((i) => i.id === id);
+    const pr = this.player.progress;
+    if (!e || !e.available) return null;
+    if (pr.marrow < e.price) return 'You carry too little Marrow.';
+    pr.marrow -= e.price;
+    let msg = '';
+    switch (e.kind) {
+      case 'weapon':
+        pr.weapons.push(e.weapon!);
+        msg = `${e.name} is yours. Equip it from Armaments.`;
+        break;
+      case 'upgrade': {
+        const lvl = (pr.upgrades?.[e.weapon!] ?? 0) + 1;
+        pr.upgrades = { ...(pr.upgrades ?? {}), [e.weapon!]: lvl };
+        msg = `Tempered to +${lvl}.`;
+        break;
+      }
+      case 'arrows':
+        pr.arrows = Math.min(BOW.maxArrows, pr.arrows + ARROW_BUNDLE);
+        msg = `Your quiver holds ${pr.arrows}.`;
+        break;
+      case 'draught':
+        pr.draughtsMax += 1;
+        pr.shopDraughts = (pr.shopDraughts ?? 0) + 1;
+        this.player.draughts += 1;
+        msg = `You can carry ${pr.draughtsMax} draughts.`;
+        break;
+    }
+    this.audio.play('pickup', { volume: 0.6, rate: 0.8 });
+    this.merchant.greet(this.audio);
+    this.save();
+    return msg;
   }
 
   /** Pause-menu guidance: name the next step, which way it lies, and light the trail. */
@@ -1462,6 +1563,7 @@ export class Game {
     }, realDt);
     this.renderer.info.reset();
     this.post.render(realDt);
+    if (this.menus.current === 'shop') this.preview.render(realDt);
     this.debugOverlay.update(realDt, `region ${this.region.id} · dread ${this.horror.dread.toFixed(2)} · mode ${this.mode}`);
   }
 

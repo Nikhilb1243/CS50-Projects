@@ -1,9 +1,10 @@
 import { el, escapeHtml } from './dom';
+import type { ShopEntry } from '../data/shop';
 import { settings, type Settings } from '../core/settings';
 import type { MenuAction } from '../core/input';
 import { levelCost, levelOf, maxHealth, maxStamina, damageMultiplier, type Attributes } from '../data/stats';
 
-export type ScreenName = 'journal' | 'map' | 'arms' | 'loading' | 'title' | 'pause' | 'settings' | 'controls' | 'death' | 'shrine' | 'levelup' | 'travel' | 'intro' | 'victory' | 'cleared';
+export type ScreenName = 'journal' | 'map' | 'arms' | 'loading' | 'title' | 'pause' | 'settings' | 'controls' | 'death' | 'shrine' | 'levelup' | 'travel' | 'intro' | 'victory' | 'cleared' | 'shop';
 
 export interface MenuCallbacks {
   newGame(): void;
@@ -21,6 +22,15 @@ export interface MenuCallbacks {
   drawMap(): void;
   equip(id: string): void;
   whereToGo(): void;
+  shop(): ShopView;
+  buy(id: string): string | null;
+  shopPreview(e: ShopEntry | null): HTMLCanvasElement;
+}
+
+export interface ShopView {
+  marrow: number;
+  items: ShopEntry[];
+  compare(e: ShopEntry): [string, string, string][];
 }
 
 export interface ArmInfo {
@@ -88,6 +98,7 @@ export class Menus {
     this.buildIntro();
     this.buildPause();
     this.buildCleared();
+    this.buildShop();
     this.buildSettings();
     this.buildControls();
     this.buildDeath();
@@ -213,7 +224,7 @@ export class Menus {
       const stack = this.backStack;
       this.show(prev, false);
       this.backStack = stack;
-    } else if (this.current === 'pause' || this.current === 'journal' || this.current === 'map') this.cb.resume();
+    } else if (this.current === 'pause' || this.current === 'journal' || this.current === 'map' || this.current === 'shop') this.cb.resume();
     else if (this.current === 'shrine') this.cb.leaveShrine();
   }
 
@@ -593,6 +604,85 @@ export class Menus {
     el('div', 'lore', s, 'The fog does not lift. But somewhere beneath the drowned bells, a flame steadies.').style.marginTop = '30px';
     const m = el('div', 'menu', s);
     this.button(m, 'Walk on', () => this.cb.resume());
+  }
+
+  private shopList!: HTMLDivElement;
+  private shopCard!: HTMLDivElement;
+  private shopMarrow!: HTMLDivElement;
+  private shopSel = '';
+
+  private buildShop(): void {
+    const s = this.screen('shop', 'dim');
+    const p = el('div', 'panel shop', s);
+    el('h2', '', p, 'The Candle-Pedlar');
+    el('div', 'sub', p, '"...wax for bone, bone for wax... what does the little flame need?"');
+    this.shopMarrow = el('div', 'shop-marrow', p);
+    const row = el('div', 'shop-row', p);
+    this.shopList = el('div', 'shop-list menu', row);
+    this.shopCard = el('div', 'shop-card', row);
+    const m = el('div', 'menu', p);
+    m.style.marginTop = '14px';
+    this.button(m, 'Leave', () => this.cb.resume());
+  }
+
+  openShop(): void {
+    this.shopSel = '';
+    this.renderShop();
+    this.show('shop');
+  }
+
+  private renderShop(msg = ''): void {
+    const v = this.cb.shop();
+    this.shopMarrow.textContent = `${v.marrow.toLocaleString('en-US')} Marrow`;
+    this.shopList.innerHTML = '';
+    if (!v.items.find((i) => i.id === this.shopSel)) this.shopSel = (v.items.find((i) => i.available) ?? v.items[0])?.id ?? '';
+    for (const it of v.items) {
+      const b = this.button(this.shopList, '', () => {
+        this.shopSel = it.id;
+        this.renderShop();
+      });
+      b.dataset.id = it.id;
+      b.classList.toggle('sel', it.id === this.shopSel);
+      b.classList.toggle('locked', !it.available);
+      b.innerHTML = `<span>${escapeHtml(it.name)}</span><em>${it.available ? `${it.price.toLocaleString('en-US')}` : escapeHtml(it.reason ?? '')}</em>`;
+      b.addEventListener('mouseenter', () => {
+        if (this.shopSel === it.id) return;
+        this.shopSel = it.id;
+        this.renderCard(v, msg);
+      });
+    }
+    this.renderCard(v, msg);
+  }
+
+  private renderCard(v: ShopView, msg: string): void {
+    const it = v.items.find((i) => i.id === this.shopSel) ?? null;
+    for (const b of this.shopList.children) b.classList.toggle('sel', (b as HTMLElement).dataset.id === this.shopSel);
+    this.shopCard.innerHTML = '';
+    this.shopCard.appendChild(this.cb.shopPreview(it));
+    if (!it) {
+      el('div', 'sub', this.shopCard, 'Nothing left to sell you. Come back when more of the fog is cleared.');
+      return;
+    }
+    el('div', 'shop-name', this.shopCard, it.name);
+    el('div', 'shop-desc', this.shopCard, it.desc);
+    const rows = v.compare(it);
+    const tbl = el('div', 'shop-stats', this.shopCard);
+    if (it.kind === 'weapon' || it.kind === 'upgrade') el('div', 'shop-cap', tbl, 'equipped → with this');
+    for (const [k, a, b] of rows) {
+      const d = Number(b) - Number(a);
+      const cls = d > 0.001 ? 'up' : d < -0.001 ? 'down' : '';
+      tbl.insertAdjacentHTML('beforeend', `<span>${escapeHtml(k)}</span><b>${escapeHtml(a)}</b><i>→</i><b class="${cls}">${escapeHtml(b)}</b>`);
+    }
+    const buy = el('div', 'menu', this.shopCard);
+    const can = it.available && v.marrow >= it.price;
+    const bb = this.button(buy, it.available ? `Buy · ${it.price.toLocaleString('en-US')} Marrow` : it.reason ?? 'Unavailable', () => {
+      if (!can) return;
+      const res = this.cb.buy(it.id);
+      this.renderShop(res ?? '');
+    });
+    bb.classList.toggle('locked', !can);
+    if (msg) el('div', 'shop-msg', this.shopCard, msg);
+    else if (it.available && !can) el('div', 'shop-msg', this.shopCard, 'You carry too little Marrow.');
   }
 
   private clearedTitle!: HTMLDivElement;

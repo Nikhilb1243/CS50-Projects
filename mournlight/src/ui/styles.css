@@ -726,3 +726,27 @@ select {
 }
 .cleared-stats span { text-align: right; text-transform: uppercase; font-size: 12px; color: #8d867b; align-self: center; }
 .cleared-stats b { font-weight: normal; color: #e6dcc6; }
+
+/* Candle-Pedlar shop */
+.panel.shop { width: min(920px, 94vw); }
+.shop-marrow { text-align: right; color: #e6dcc6; letter-spacing: 0.1em; margin: -6px 0 10px; }
+.shop-row { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; }
+.shop-list { flex: 1 1 320px; max-height: 52vh; overflow-y: auto; align-items: stretch; }
+.shop-list button { display: flex; justify-content: space-between; gap: 16px; text-align: left; width: 100%; font-size: 15px; letter-spacing: 0.06em; padding: 7px 12px; }
+.shop-list button em { font-style: normal; color: #c9a860; white-space: nowrap; }
+.shop-list button.locked { opacity: 0.5; }
+.shop-list button.locked em { color: #8d867b; font-size: 0.85em; }
+.shop-list button.sel { color: #f2e6c8; background: rgba(232, 192, 112, 0.08); }
+.shop-card { flex: 1 1 300px; min-width: 260px; text-align: center; }
+.shop-preview { width: 200px; height: 200px; display: block; margin: 0 auto 6px; }
+.shop-name { color: #e8c070; font-size: 18px; letter-spacing: 0.06em; }
+.shop-desc { color: #b9b2a4; font-size: 13px; margin: 6px 0 12px; line-height: 1.45; }
+.shop-stats { display: grid; grid-template-columns: auto auto auto auto; gap: 4px 12px; justify-content: center; font-size: 14px; }
+.shop-stats .shop-cap { grid-column: 1 / -1; font-size: 11px; color: #8d867b; text-transform: uppercase; letter-spacing: 0.1em; }
+.shop-stats span { text-align: right; color: #8d867b; text-transform: uppercase; font-size: 12px; align-self: center; }
+.shop-stats b { font-weight: normal; color: #d8cfbc; }
+.shop-stats b.up { color: #9fd08a; }
+.shop-stats b.down { color: #d08a7a; }
+.shop-stats i { color: #6d675e; font-style: normal; }
+.shop-card .menu button.locked { opacity: 0.45; }
+.shop-msg { margin-top: 8px; color: #c9a860; font-size: 13px; }
