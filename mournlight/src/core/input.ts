@@ -83,6 +83,18 @@ export class Input {
 
   pointerLocked = false;
   usingGamepad = false;
+  private pad: Gamepad | null = null;
+  private rumbleUntil = 0;
+
+  /** Controller vibration (no-op without a gamepad or haptics support). */
+  rumble(strong: number, weak: number, ms: number): void {
+    const act = (this.pad as unknown as { vibrationActuator?: { playEffect(t: string, p: object): Promise<unknown> } } | null)?.vibrationActuator;
+    if (!act || !this.usingGamepad) return;
+    const now = performance.now();
+    if (now < this.rumbleUntil && strong < 0.5) return;
+    this.rumbleUntil = now + ms;
+    void act.playEffect('dual-rumble', { duration: ms, strongMagnitude: Math.min(1, strong), weakMagnitude: Math.min(1, weak) }).catch(() => undefined);
+  }
   /** Set by the game so flicks / wheel switch targets only while locked on. */
   lockOnActive = false;
   /** When false, gameplay actions are ignored (menus open). */
@@ -268,6 +280,7 @@ export class Input {
         break;
       }
     }
+    this.pad = pad;
     if (pad) this.pollPad(pad, realDt, (x, y) => {
       if (Math.abs(x) > 0 || Math.abs(y) > 0) {
         mx = x;

@@ -42,7 +42,8 @@ export class GameLoop {
   private tick = (now: number): void => {
     if (!this.running) return;
     this.raf = requestAnimationFrame(this.tick);
-    const realDt = Math.min((now - this.last) / 1000, this.maxDt);
+    // rAF timestamps can precede a performance.now() taken by resetAccumulator: never step backwards
+    const realDt = Math.max(0, Math.min((now - this.last) / 1000, this.maxDt));
     this.last = now;
 
     const scaled = this.time.advance(realDt);

@@ -35,14 +35,37 @@ Click the page once so the browser allows audio and pointer lock. Headphones hel
 | Tallow Draught | R | X |
 | Interact / rest | E | Y |
 | Shutter the lantern | F | LT / D-pad up |
+| Swap armament | X | D-pad down |
+| Ultimate (when the meter is full) | V | Back / View |
+| Bow: draw (hold) and loose (release) | Hold left mouse | Hold RB |
+| Bow: aim over the shoulder | Hold right mouse | Hold LB |
+| Journal | J | |
+| Map | M | |
 | Pause | Esc | Start |
 | Debug overlay | F1 | |
 
 When the debug overlay is open: F2 shows hitboxes, F3 toggles god mode, F4 gives 5000 Marrow, F6 kills nearby creatures, F7 refills you, and keys 1 to 6 teleport to each region.
 
+## Enhancement pass
+
+See `ENHANCE_PLAN.md` for the milestone plan and per-milestone notes.
+
+- **Lighting and graphics:** half-float HDR chain with N8AO ambient occlusion, GPU auto-exposure (eyes adapt between black crypts and moonlit fields), moon god rays, bloom, ACES or AgX tone mapping, a procedurally baked colour-grading LUT per region, SMAA, cascaded soft moon shadows (High/Ultra), a procedural environment map for reflections, wet surfaces and puddles, moonlight shafts through the cathedral windows, gusting candle and torch light. Quality presets **Low / Medium / High / Ultra** apply instantly; High and Ultra also scale resolution dynamically to hold 60 fps.
+- **Armaments** (found in the world, swapped with X or from Pause > Armaments):
+  - *Wickblade* (longsword): the balanced three-cut chain. Ultimate **Pale Crescent**, a travelling crescent of spectral blue fire.
+  - *Coffin-Lid Slab* (greatsword, Gallowwood hollow): slow, hyper-armoured, staggers anything. Ultimate **Gravebreak**, a slam that splits the earth into a line of eruptions.
+  - *Hush and Lull* (twin daggers, a Brinemoor house): fast four-hit chains; hits build **bleed** that bursts for heavy damage. Ultimate **Hushstep**, blinking through up to five foes and leaving cuts of cold blue light.
+  - *Gloamstring* (bow, the Wick Ossuary): hold to draw, release to loose; aim over the shoulder with zoom and a crosshair; arrows drop with gravity, headshots deal 1.8x, the quiver refills at candles. Ultimate **Pale Deluge**: an arrow into the sky, then a rain of blue-flame arrows over a marked circle that leaves the ground burning.
+  - The **ultimate meter** fills from dealing damage, parrying and being hit.
+- **Guidance:** a main objective per region plus optional deeds (tracker at the top right, journal on J), a fog-of-war map on M, region title cards, notes of the dead that hint at secrets and boss weaknesses, a hint after several minutes without progress, and a lantern flame that leans toward where you must go while faint wisps mark the way.
+- **Creatures:** eye halos, drips and crawling skin on every creature, stop-motion twitching for stalkers, crawlers and screamers, unsettling idles. New: the **Corpse-Mimic** (lies among the dead and rises when you come close), the **Screamer** (wails and summons everything nearby) and the **Ashwing Swarm** (moths that smother your lantern).
+- **Two new regions**, unlocked boss by boss through passages: the **Weeping Catacombs** beneath the Godwound (a flooded ossuary whose water rises and falls; boss **The Bone Choir**, a singing mass of fused bodies that splits into three) and **Bellspire** (a tower climbed through wind gusts and lightning; boss **The Hanged Warden**, who swings from a gibbet and, when its chains snap, fights with its bell). Each has two shrines, a shortcut, loot and an upgrade (Choir-Bone Charm, Stormglass Whetstone).
+- **Sound:** footsteps by surface, stone impacts, bow creak and twang, arrow whistle, roaring blue flame, a generated reverb impulse per region, muffling behind walls, and music that moves from sparse bell tolls to a boss ostinato that intensifies each phase.
+- **Polish:** controller rumble, a FOV punch on connecting blows, animated menus, auto-save at shrines and passages with Continue on the title screen.
+
 ## What's in the vertical slice
 
-- **One seamless map, five regions, explorable in any order.** The Wick Ossuary is an underground crypt that teaches the controls. Brinemoor is a drowned village with stilt houses, boardwalks and a bell tower. Gallowwood is a dead forest with a ridge, a ravine and a sunken hollow. The Cathedral of the Last Vigil is a nave with galleries, a rood bridge and an apse. The Godwound is the boss arena, ringed by a dead god's ribs.
+- **One seamless map, five overworld regions, explorable in any order** (plus the two deep regions above). The Wick Ossuary is an underground crypt that teaches the controls. Brinemoor is a drowned village with stilt houses, boardwalks and a bell tower. Gallowwood is a dead forest with a ridge, a ravine and a sunken hollow. The Cathedral of the Last Vigil is a nave with galleries, a rood bridge and an apse. The Godwound is the boss arena, ringed by a dead god's ribs.
 - **Verticality:** cliffs and a 14 m plateau, a causeway ramp, switchback stair towers, galleries, a bridge over the ravine, a stair shaft out of the crypt, and fall damage.
 - **Four Candle Shrines.** Resting heals you, refills your draughts and lantern oil, respawns creatures, and opens the level-up and fast-travel menus.
 - **Shortcut door:** the Undercroft tower door is barred from the inside and can only be opened from the cathedral side.
@@ -74,18 +97,19 @@ When the debug overlay is open: F2 shows hitboxes, F3 toggles god mode, F4 gives
 src/
   core/      loop (fixed 60 Hz + interpolation), time/hit-stop, input (kb/mouse/pointer lock/gamepad),
              physics wrapper (Rapier KCC), camera (orbit, sphere-cast collision, lock-on), settings, save, events
-  data/      attacks.ts (windup/active/recovery frames, lunges, hazards), enemies.ts, stats.ts
+  data/      attacks.ts (windup/active/recovery frames, lunges, hazards), weapons.ts, enemies.ts, stats.ts
   world/     layout.ts  <- the whole map as data (terrain modifiers, structures, spawns, items, messages)
              terrain (heightfield + triplanar shader), builder (merges geometry, creates colliders),
              props (instanced trees/rocks/graves/reeds, cages, physics barrels), lights (flame pool),
              interactables (shrines, door, fog wall, pickups, remnant), textures (procedural PBR), world.ts
   entities/  rig (skeleton, pose blending, skinned mesh builder), poses (keyframes + locomotion),
              animator, models (procedural models + GLTF provider), actor, player, lantern
-  combat/    swept hit detection, area hazards (shockwaves, bursts, flame waves)
-  ai/        enemy state machine + perception, creature types, boss, noise bus
+  combat/    swept hit detection, area hazards (shockwaves, bursts, flame waves), arrows + ultimates
+  ai/        enemy state machine + perception, creature types, creature dressing, Oskeline, deep bosses, noise bus
   audio/     procedural synthesis, AudioEngine (THREE.PositionalAudio pool + convolution reverb), ambience
-  fx/        post-processing, layered height fog, particles, sky, horror director (dread)
-  ui/        HUD, menus (title/pause/death/level-up/travel/settings/controls), debug overlay
+  fx/        post-processing (AO, exposure, LUT, god rays, SMAA), fog, particles + GPU particles, trails,
+             sky, env map, horror director (dread)
+  ui/        HUD, menus (title/pause/armaments/journal/map/death/level-up/travel/settings/controls), map, debug overlay
 ```
 
 - **Fixed timestep:** the simulation always steps at 60 Hz, and rendering interpolates actor transforms by the leftover fraction of a step. Hit-stop scales simulation time, not rendering time.
@@ -104,10 +128,10 @@ src/
   - The point-light count stays fixed (a pool assigned to the nearest flames) so shaders never recompile.
   - Creatures far from the player sleep.
   - The moon's shadow frustum follows the player.
-  - Settings offer Low, Medium and High quality: resolution scale, shadow resolution, bloom levels, MSAA, and lantern shadows on High.
+  - Quality presets (Low/Medium/High/Ultra, `QUALITY_PROFILES` in `core/settings.ts`) set resolution, AO, SMAA, shadow resolution/softness/cascades, god rays, point-light count and lantern shadows, and apply at runtime.
 
 ## Notes
 
 - Progress (stats, lit shrines, opened doors, looted items, dropped Marrow, boss state) is saved to `localStorage` when you rest, pick something up, open a door, die or defeat the boss. **Continue** on the title screen resumes from your last shrine.
 - `viewer.html` (dev server only) is a model and pose viewer, for example `/viewer.html?ids=revenant&poses=guard,slashR_wind,slashR_hit`.
-- Development URL flags: `?autostart&tp=<region>&god&hitboxes&debug&boss`.
+- Development URL flags: `?autostart&tp=<region>&god&hitboxes&debug&boss&arms&weapon=bow&ult&pos=x,y,z`. `tp` also accepts `catacombs` and `bellspire`.

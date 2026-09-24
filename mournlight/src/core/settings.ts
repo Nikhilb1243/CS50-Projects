@@ -26,7 +26,7 @@ export interface QualityProfile {
 export const QUALITY_PROFILES: Record<Quality, QualityProfile> = {
   low: { maxDpr: 1, resScale: 0.75, shadowRes: 1024, cascades: 0, shadowFar: 0, shadowRadius: 1, ao: 'off', aoQuality: 'Performance', smaa: 0, bloomLevels: 4, godRays: false, godRaySamples: 0, chroma: false, lanternShadow: false, pointLights: 4, envMap: false },
   medium: { maxDpr: 1, resScale: 1, shadowRes: 2048, cascades: 0, shadowFar: 0, shadowRadius: 2, ao: 'half', aoQuality: 'Low', smaa: 1, bloomLevels: 5, godRays: false, godRaySamples: 0, chroma: true, lanternShadow: false, pointLights: 6, envMap: true },
-  high: { maxDpr: 1.5, resScale: 1, shadowRes: 2048, cascades: 3, shadowFar: 70, shadowRadius: 3, ao: 'half', aoQuality: 'Medium', smaa: 2, bloomLevels: 6, godRays: true, godRaySamples: 40, chroma: true, lanternShadow: true, pointLights: 8, envMap: true },
+  high: { maxDpr: 1.5, resScale: 1, shadowRes: 2048, cascades: 2, shadowFar: 60, shadowRadius: 3, ao: 'half', aoQuality: 'Medium', smaa: 2, bloomLevels: 6, godRays: true, godRaySamples: 32, chroma: true, lanternShadow: false, pointLights: 8, envMap: true },
   ultra: { maxDpr: 2, resScale: 1, shadowRes: 2048, cascades: 4, shadowFar: 110, shadowRadius: 4, ao: 'full', aoQuality: 'High', smaa: 3, bloomLevels: 7, godRays: true, godRaySamples: 60, chroma: true, lanternShadow: true, pointLights: 10, envMap: true },
 };
 

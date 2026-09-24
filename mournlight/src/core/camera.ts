@@ -44,6 +44,12 @@ export class ThirdPersonCamera {
     this.trauma = clamp(this.trauma + t, 0, 1);
   }
 
+  private punchK = 0;
+  /** Tiny FOV kick that sells a connecting blow. */
+  punch(amount: number): void {
+    this.punchK = Math.max(this.punchK, amount);
+  }
+
   setFovBoost(v: number): void {
     this.fovBoost = v;
   }
@@ -64,8 +70,10 @@ export class ThirdPersonCamera {
 
   update(dt: number, target: THREE.Vector3, look: { x: number; y: number }, physics: Physics, playerHeight = 1.55): void {
     const s = settings.value;
-    if (Math.abs(this.camera.fov - (s.fov + this.fovBoost)) > 0.01) {
-      this.camera.fov = damp(this.camera.fov, s.fov + this.fovBoost, 6, dt);
+    this.punchK = Math.max(0, this.punchK - dt * 12);
+    const fovT = s.fov + this.fovBoost - this.punchK;
+    if (Math.abs(this.camera.fov - fovT) > 0.01) {
+      this.camera.fov = this.punchK > 0 ? fovT : damp(this.camera.fov, fovT, 6, dt);
       this.camera.updateProjectionMatrix();
     }
 

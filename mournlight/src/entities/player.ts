@@ -831,6 +831,8 @@ export class Player extends Actor {
         });
         if (res === 'hit') {
           this.gainUlt(dmg * ULT_GAIN.dealt);
+          this.ctx.cam.punch(heavy ? 1.6 : 0.7);
+          this.ctx.input.rumble(heavy ? 0.7 : 0.3, 0.4, heavy ? 140 : 70);
           if (w.bleed > 0) (target as unknown as Enemy).addBleed?.(w.bleed, this);
           this.ctx.hitstop((heavy ? 0.11 : 0.065) * w.hitstop, 0.03);
           this.ctx.shake((heavy ? 0.35 : 0.18) * Math.min(1.5, w.hitstop));

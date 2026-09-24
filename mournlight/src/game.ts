@@ -247,7 +247,10 @@ export class Game {
       enemies: this.enemies,
       bosses: [],
       hitstop: (d, s) => self.time.hitstop(d, s),
-      shake: (a) => self.cam.addTrauma(a),
+      shake: (a) => {
+        self.cam.addTrauma(a);
+        self.input.rumble(a * 1.2, a * 0.8, 80 + a * 260);
+      },
       flash: (a, c) => self.flash(a, c),
       message: (t, d) => self.hud.message(t, d),
     };
@@ -389,6 +392,7 @@ export class Game {
     this.hud.setVisible(true);
     this.syncFacts();
     this.objectives.evaluate(true);
+    this.region = this.world.regionAt(this.player.pos);
     this.mode = 'playing';
     this.input.gameplayEnabled = true;
     this.input.clearAll();
@@ -713,6 +717,7 @@ export class Game {
             this.physics.refreshQueries();
             this.fadeTarget = 0;
             this.regionTimer = 0;
+            this.save();
           }, 900);
         });
         break;
@@ -1113,7 +1118,7 @@ export class Game {
 
   private applyPixelRatio(): void {
     const q = QUALITY_PROFILES[settings.value.quality];
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.maxDpr) * q.resScale);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.maxDpr) * q.resScale * (this.dynScale ?? 1));
   }
 
   /** Apply the current quality preset at runtime: resolution, post chain, shadows, lights, IBL. */
@@ -1157,11 +1162,42 @@ export class Game {
   // Rendering
   // ---------------------------------------------------------------------------
   private frameCount = 0;
+  private frameEma = 1 / 60;
+  private dynScale = 1;
+  private dynT = 0;
+
+  /**
+   * Dynamic resolution: on High/Ultra the render scale drops (to 70%) when
+   * frames run long and recovers when there is headroom, so the target of
+   * 60 fps holds on mid-range GPUs in heavy scenes.
+   */
+  private adaptResolution(dt: number): void {
+    if (this.mode !== 'playing' || dt > 0.25) return;
+    this.frameEma += (dt - this.frameEma) * 0.05;
+    this.dynT -= dt;
+    if (this.dynT > 0) return;
+    this.dynT = 1.5;
+    const q = settings.value.quality;
+    if (q !== 'high' && q !== 'ultra') {
+      this.dynScale = 1;
+      return;
+    }
+    const prev = this.dynScale;
+    if (this.frameEma > 1 / 52) this.dynScale = Math.max(0.7, this.dynScale - 0.1);
+    else if (this.frameEma < 1 / 68) this.dynScale = Math.min(1, this.dynScale + 0.05);
+    if (prev !== this.dynScale) {
+      this.applyPixelRatio();
+      this.renderer.setSize(window.innerWidth, window.innerHeight, false);
+      this.post.setSize(window.innerWidth, window.innerHeight);
+      this.particles.setViewport(window.innerHeight * this.renderer.getPixelRatio(), this.cam.camera.fov);
+    }
+  }
 
   private render(alpha: number, realDt: number): void {
     this.frameCount++;
     (window as unknown as { __stats: unknown }).__stats = { frames: this.frameCount, dt: realDt, mode: this.mode, calls: this.renderer.info.render.calls, tris: this.renderer.info.render.triangles };
     this.input.poll(realDt);
+    this.adaptResolution(realDt);
     if (this.mode === 'loading' || !this.player) {
       this.renderer.setClearColor(0x050506);
       this.renderer.clear();

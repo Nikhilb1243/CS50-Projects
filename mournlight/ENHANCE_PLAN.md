@@ -115,3 +115,17 @@ pmndrs postprocessing + Web Audio), everything original (names, lore, enemies, d
 - Per-region reverb: `AudioEngine.setRegionReverb(id)` builds a generated impulse response per region (length, decay, brightness, early reflections) and cross-fades between two convolvers.
 - Occlusion: positional one-shots and attached creature voices get a low-pass (650 Hz) and quieter gain when the camera has no line of sight to them (`audio.occluded`, rechecked 4x/s).
 - Dynamic music in `Ambience`: sparse detuned bell motif while exploring (only when dread is low); bosses get a bowed sawtooth ostinato that gains register, density, tempo and a sub drone in phase 2+, on top of the existing boss pad and pulse.
+
+### Milestone 7: done (session 1)
+- Save: already auto-saved at shrines (rest), pickups, doors, death and bosses; now also after every passage, and the save carries weapons, arrows, notes, visited regions, map exploration and defeated deep bosses. Continue on the title screen restores all of it.
+- Controller vibration (`Input.rumble`, Gamepad `vibrationActuator` dual-rumble) on every camera shake and on connecting blows.
+- Hit feedback: a short FOV punch (`cam.punch`) on connecting hits, weapon-coloured sparks, heavier hit-stop for the greatsword.
+- UI: menu screens fade/scale in, button and toast transitions.
+- Performance: High preset trimmed (2 shadow cascades to 60 m, no lantern point-shadow (6 extra shadow renders), 32 god-ray samples), draw calls in the opening crypt at High went from ~2350 to ~930. Dynamic resolution on High/Ultra (down to 70% when frames exceed ~19 ms, recovers under ~15 ms). Not measured on a real mid-range GPU in this session (the test browser uses software WebGL), so the 60 fps target is unverified.
+- Bug fix: the game loop could get a negative frame delta right after `resetAccumulator`, which briefly froze the simulation (and on slow frames held the region at its default, so a new game showed the wrong title card).
+- README updated (controls, weapons, regions, new systems, dev flags).
+
+### Ideas for a next session
+- Crawler procedural IK legs; bespoke death animations; a third boss phase.
+- Real refraction heat haze (screen-space distortion pass); CC0 audio/texture assets if wanted (then add CREDITS.md).
+- Profile on real hardware (Chrome performance panel) and tune `QUALITY_PROFILES`.
