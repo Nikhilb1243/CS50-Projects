@@ -218,14 +218,30 @@ export class LightManager {
     }
     m.instanceMatrix.needsUpdate = true;
 
-    // Assign pool lights to the nearest visible flames
+    // Transient flashes first (at most half the pool), then the nearest visible flames
+    let slot = 0;
+    for (let i = this.transients.length - 1; i >= 0; i--) {
+      const tr = this.transients[i];
+      tr.t += dt;
+      if (tr.t >= tr.dur) this.transients.splice(i, 1);
+    }
+    const maxTr = Math.floor(this.activeLights / 2);
+    for (const tr of this.transients) {
+      if (slot >= maxTr) break;
+      const l = this.pool[slot++];
+      const k = 1 - tr.t / tr.dur;
+      l.position.copy(tr.pos);
+      l.color.copy(tr.color);
+      l.distance = tr.distance;
+      l.intensity = tr.intensity * k * k;
+    }
     const sorted = this.flames
       .filter((f) => f.level > 0.02)
       .map((f) => ({ f, d: f.pos.distanceToSquared(camPos) }))
       .sort((a, b) => a.d - b.d);
-    for (let i = 0; i < this.activeLights; i++) {
+    for (let i = slot; i < this.activeLights; i++) {
       const l = this.pool[i];
-      const e = sorted[i];
+      const e = sorted[i - slot];
       if (!e || e.d > 90 * 90) {
         l.intensity = 0;
         continue;
@@ -243,6 +259,16 @@ export class LightManager {
       l.intensity = e.f.intensity * 1.8 * e.f.flicker * e.f.level * fade;
     }
   }
+
+  /**
+   * Short-lived light (impacts, ultimates). Transients borrow the fixed point
+   * light pool with priority over flames, so no lights are ever added.
+   */
+  flash(pos: THREE.Vector3, color: THREE.ColorRepresentation, intensity: number, distance: number, duration: number): void {
+    if (this.transients.length >= 6) this.transients.shift();
+    this.transients.push({ pos: pos.clone(), color: new THREE.Color(color), intensity, distance, t: 0, dur: duration });
+  }
+  private transients: { pos: THREE.Vector3; color: THREE.Color; intensity: number; distance: number; t: number; dur: number }[] = [];
 
   /** Called after the camera has moved for the frame. */
   updateShadows(dt: number, scene: THREE.Scene, camera: THREE.PerspectiveCamera): void {

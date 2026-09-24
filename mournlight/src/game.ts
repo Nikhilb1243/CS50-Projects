@@ -16,6 +16,9 @@ import { PostFX } from './fx/post';
 import { installFogChunks, fogUniforms } from './fx/fog';
 import { HorrorDirector } from './fx/horror';
 import { Sky } from './fx/sky';
+import { GpuParticles } from './fx/gpuparticles';
+import { Abilities } from './combat/abilities';
+import { BOW, WEAPONS, WEAPON_ORDER, type WeaponId } from './data/weapons';
 import { buildEnvironment } from './fx/envmap';
 import { regionLut } from './fx/lut';
 import { wetUniforms } from './world/wetness';
@@ -64,6 +67,8 @@ export class Game {
   private audio: AudioEngine;
   private ambience: Ambience;
   private particles!: Particles;
+  private gpu!: GpuParticles;
+  private abilities!: Abilities;
   private post!: PostFX;
   private combat = new CombatSystem();
   private hazards!: HazardSystem;
@@ -141,6 +146,12 @@ export class Game {
       leaveShrine: () => this.leaveShrine(),
       click: () => this.audio.play('ui_click', { volume: 0.6 }),
       move: () => this.audio.play('ui_move', { volume: 0.5 }),
+      arms: () =>
+        WEAPON_ORDER.map((id) => {
+          const w = WEAPONS[id];
+          return { id, name: w.name, desc: w.desc, stats: w.stats, ult: w.ultimateName, ultDesc: w.ultimateDesc, owned: this.player.progress.weapons.includes(id), equipped: this.player.progress.weapon === id };
+        }),
+      equip: (id) => this.player.equip(id as WeaponId),
     });
     this.menus.show('loading');
     window.addEventListener('resize', () => this.onResize());
@@ -164,6 +175,7 @@ export class Game {
     progress(0.01, 'Waking the physics');
     this.physics = await Physics.create();
     this.particles = new Particles(this.scene, this.quality);
+    this.gpu = new GpuParticles(this.scene);
     this.particles.setViewport(window.innerHeight * this.renderer.getPixelRatio(), this.cam.camera.fov);
     this.world = new World(this.scene, this.physics, this.quality);
     await this.world.build(progress);
@@ -183,6 +195,8 @@ export class Game {
       audio: this.audio,
       ambience: this.ambience,
       particles: this.particles,
+      gpu: this.gpu,
+      abilities: null as unknown as Abilities,
       combat: this.combat,
       hazards: null as unknown as HazardSystem,
       lights: this.world.lights,
@@ -200,6 +214,8 @@ export class Game {
       message: (t, d) => self.hud.message(t, d),
     };
     this.hazards = new HazardSystem(this.ctx);
+    this.abilities = new Abilities(this.ctx);
+    this.ctx.abilities = this.abilities;
     this.ctx.hazards = this.hazards;
     this.player = new Player(this.ctx, new THREE.Vector3(...PLAYER_START.p), PLAYER_START.yaw, this.quality);
     this.ctx.player = this.player;
@@ -289,6 +305,10 @@ export class Game {
     if (q.has('god')) this.debug.god = true;
     if (q.has('debug')) this.debug.enabled = true;
     if (q.has('marrow')) this.addMarrow(Number(q.get('marrow')));
+    if (q.has('arms')) for (const w of ['greatsword', 'daggers', 'bow'] as const) this.player.giveWeapon(w);
+    if (q.has('weapon')) this.player.equip(q.get('weapon') as WeaponId);
+    if (q.has('ult')) this.player.ult = 100;
+    (window as unknown as { __game: unknown }).__game = this;
     if (q.has('phase2')) {
       this.world.setArenaPhase(2);
       this.rotK = 1;
@@ -328,7 +348,9 @@ export class Game {
 
   private newGame(): void {
     const p = this.player;
-    p.progress = { attrs: { ...START_ATTRIBUTES }, marrow: 0, draughtsMax: PLAYER_TUNING.startDraughts, dmgBonus: 0, fuelMax: PLAYER_TUNING.lanternFuelMax };
+    p.progress = { attrs: { ...START_ATTRIBUTES }, marrow: 0, draughtsMax: PLAYER_TUNING.startDraughts, dmgBonus: 0, fuelMax: PLAYER_TUNING.lanternFuelMax, weapons: ['longsword'], weapon: 'longsword', arrows: BOW.maxArrows };
+    p.equip('longsword');
+    p.ult = 0;
     p.recalcStats(true);
     p.respawn(new THREE.Vector3(...PLAYER_START.p), PLAYER_START.yaw);
     this.fadeAmt = 1;
@@ -356,7 +378,9 @@ export class Game {
 
   private applySave(s: SaveData): void {
     const p = this.player;
-    p.progress = { attrs: { ...s.attrs }, marrow: s.marrow, draughtsMax: s.draughtsMax, dmgBonus: s.dmgBonus, fuelMax: s.fuelMax };
+    const weapons = (s.weapons ?? ['longsword']) as WeaponId[];
+    p.progress = { attrs: { ...s.attrs }, marrow: s.marrow, draughtsMax: s.draughtsMax, dmgBonus: s.dmgBonus, fuelMax: s.fuelMax, weapons, weapon: (s.weapon as WeaponId) ?? 'longsword', arrows: s.arrows ?? BOW.maxArrows };
+    p.equip(p.progress.weapon);
     p.recalcStats(true);
     p.lantern.drainMult = s.fuelMax > PLAYER_TUNING.lanternFuelMax ? 0.8 : 1;
     for (const sh of this.world.shrines) if (s.shrinesLit.includes(sh.def.id)) sh.kindle();
@@ -404,6 +428,9 @@ export class Game {
       remnant: r.enabled ? { p: [r.pos.x, r.pos.y, r.pos.z], amount: r.amount } : null,
       playTime: this.playTime,
       deaths: this.deaths,
+      weapons: [...p.progress.weapons],
+      weapon: p.progress.weapon,
+      arrows: p.progress.arrows,
     });
   }
 
@@ -586,6 +613,12 @@ export class Game {
               prog.dmgBonus += 0.12;
               this.hud.toast(info.name, info.desc);
               break;
+            case 'greatsword':
+            case 'daggers':
+            case 'bow':
+              p.giveWeapon(it.item);
+              this.hud.toast(info.name, info.desc);
+              break;
           }
           this.audio.play('pickup', { volume: 0.8 });
           this.particles.wisps(it.pos.clone().setY(it.pos.y + 0.5), 12, ITEM_INFO[it.item].color);
@@ -620,6 +653,7 @@ export class Game {
       p.health = p.maxHealth;
       p.stamina = p.maxStamina;
       p.draughts = p.progress.draughtsMax;
+      p.progress.arrows = BOW.maxArrows;
       p.lantern.refill();
       p.lantern.on = true;
       this.resetWorldAfterRestOrDeath();
@@ -737,6 +771,7 @@ export class Game {
     this.player.update(dt);
     for (const e of this.enemies) e.update(dt);
     this.hazards.update(dt);
+    this.abilities.step(dt);
     this.physics.step();
     this.world.step();
     if (this.mode === 'playing') {
@@ -914,7 +949,8 @@ export class Game {
           blend: this.cinematicT < 2.9 ? k : 1 - clamp01((this.cinematicT - 2.9) / 0.6),
         };
       } else this.cam.override = null;
-      this.cam.setFovBoost(p.sprinting ? 4 : 0);
+      this.cam.aim = p.aiming;
+      this.cam.setFovBoost(p.aiming ? -14 - p.draw * 8 : p.sprinting ? 4 : 0);
       const target = this.tmp.lerpVectors(p.prevPos, p.pos, alpha);
       this.cam.update(realDt, target, look, this.physics);
     }
@@ -928,6 +964,8 @@ export class Game {
     const fogDist = Math.min(170, 2.6 / Math.max(0.012, this.fogDensity));
     this.world.update(realDt, this.time.real, camPos, this.focus, alpha, fogDist);
     this.particles.update(scaledDt);
+    this.gpu.update(scaledDt, this.fogDensity);
+    this.abilities.render(this.time.real);
     this.ambientParticles(realDt);
     fogUniforms.fogTime.value = this.time.real;
     this.sky.update(camPos, this.fogColor, this.time.real, this.moonK);
@@ -1049,6 +1087,12 @@ export class Game {
       boss: this.boss.fightActive || (this.boss.alive && this.boss.state === 'transform') ? { name: this.boss.displayName, hp: this.boss.health, max: this.boss.maxHealth } : null,
       prompt: this.prompt ? { key, text: this.prompt.text } : null,
       hint,
+      ult: p.ult,
+      ultReady: p.ultReady,
+      weapon: p.weapon.name,
+      arrows: p.progress.weapon === 'bow' ? p.progress.arrows : null,
+      aiming: p.aiming,
+      draw: p.draw,
     });
   }
 

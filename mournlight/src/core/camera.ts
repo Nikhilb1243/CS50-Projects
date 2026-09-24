@@ -21,6 +21,9 @@ export class ThirdPersonCamera {
   private shakeTime = 0;
   private fovBoost = 0;
   private lockBlend = 0;
+  /** Over-the-shoulder aim (bow): 0..1 target, blended. */
+  aim = false;
+  private aimBlend = 0;
   /** When set, the camera frames the target. */
   lockTarget: THREE.Vector3 | null = null;
   /** Height of the lock target's center of mass (for tall bosses). */
@@ -69,6 +72,7 @@ export class ThirdPersonCamera {
     // Look input
     const locked = !!this.lockTarget;
     this.lockBlend = damp(this.lockBlend, locked ? 1 : 0, 8, dt);
+    this.aimBlend = damp(this.aimBlend, this.aim ? 1 : 0, 10, dt);
     if (!locked) {
       this.yaw -= look.x;
       this.pitch -= look.y;
@@ -96,7 +100,7 @@ export class ThirdPersonCamera {
     this.pivot.y = damp(this.pivot.y, target.y, 12, dt);
 
     const head = this.tmp.set(this.pivot.x, this.pivot.y + playerHeight, this.pivot.z);
-    this.curShoulder = damp(this.curShoulder, this.shoulder * (1 - this.lockBlend * 0.25), 6, dt);
+    this.curShoulder = damp(this.curShoulder, this.shoulder * (1 - this.lockBlend * 0.25) + this.aimBlend * 0.25, 6, dt);
     const cp = Math.cos(this.pitch);
     // camera offset direction (from pivot toward camera)
     this.dir.set(Math.sin(this.yaw) * cp, -Math.sin(this.pitch), Math.cos(this.yaw) * cp);
@@ -104,7 +108,7 @@ export class ThirdPersonCamera {
     const rz = -Math.sin(this.yaw);
     // pull back further for towering targets so both stay framed
     const big = clamp((this.lockHeight - 2) * 0.55, 0, 2.2);
-    const dist = this.distance + this.lockBlend * (0.6 + big);
+    const dist = (this.distance + this.lockBlend * (0.6 + big)) * (1 - this.aimBlend * 0.5);
     this.desired
       .copy(head)
       .addScaledVector(this.dir, dist)

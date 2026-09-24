@@ -92,7 +92,7 @@ export interface EnemySpawn {
   n?: V3;
 }
 
-export type ItemKind = 'marrow' | 'vessel' | 'oil' | 'whetstone';
+export type ItemKind = 'marrow' | 'vessel' | 'oil' | 'whetstone' | 'greatsword' | 'daggers' | 'bow';
 
 export interface ItemDef {
   id: string;
@@ -517,6 +517,10 @@ export const ITEMS: ItemDef[] = [
   { id: 'crypt-alcove', kind: 'marrow', p: [16, CY, 107], amount: 160 },
   { id: 'brine-house', kind: 'marrow', p: [-141, 0.4, 31], amount: 260 },
   { id: 'bell-vessel', kind: 'vessel', p: [-128, 15.2, -12] },
+  // armaments
+  { id: 'crypt-bow', kind: 'bow', p: [14, CY, 104] },
+  { id: 'brine-daggers', kind: 'daggers', p: [-139, 0.4, 33] },
+  { id: 'hollow-slab', kind: 'greatsword', p: [146, -3.4, 121] },
   { id: 'hollow-oil', kind: 'oil', p: [148, -3.4, 118] },
   { id: 'hollow-marrow', kind: 'marrow', p: [144, -3.2, 124], amount: 320 },
   { id: 'watch-whetstone', kind: 'whetstone', p: [96, 14 + 7.2, -98] },

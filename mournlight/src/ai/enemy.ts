@@ -706,6 +706,23 @@ export class Enemy extends Actor {
 
   protected onHurt(_h: HitInfo): void {}
 
+  /** Bleed build-up: filling the gauge opens the wound for a burst of damage. */
+  bleedBuild = 0;
+  addBleed(amount: number, by: Player): void {
+    if (!this.alive || this.phantom) return;
+    this.bleedBuild += amount;
+    if (this.bleedBuild < 100) return;
+    this.bleedBuild = 0;
+    const dmg = Math.max(60, this.maxHealth * 0.14);
+    this.health -= dmg;
+    const c = this.center(new THREE.Vector3());
+    this.ctx.particles.blood(c, new THREE.Vector3(0, 1, 0), 40, 0x6a0a08);
+    this.ctx.gpu.emit(this.ctx.gpu.add, { pos: c, count: 24, speed: [1, 5], life: [0.3, 0.7], size: [0.05, 0.1], color: 0xff2a20, color2: 0x801010, gravity: 9, drag: 1.5, stretch: 0.04 });
+    this.ctx.audio.playAt(this.def.hitSound, c, { volume: 1, rate: 0.7 });
+    this.ctx.message('Bloodletting', 1);
+    if (this.health <= 0) this.die(by);
+  }
+
   protected bleed(point: THREE.Vector3, dir: THREE.Vector3, n: number): void {
     const d = dir.clone().setY(0.4);
     switch (this.def.type) {

@@ -16,6 +16,12 @@ export interface HudState {
   boss: { name: string; hp: number; max: number } | null;
   prompt: { key: string; text: string } | null;
   hint: string | null;
+  ult: number;
+  ultReady: boolean;
+  weapon: string;
+  arrows: number | null;
+  aiming: boolean;
+  draw: number;
 }
 
 class Bar {
@@ -63,6 +69,9 @@ export class Hud {
   private marrowVal: HTMLSpanElement;
   private marrowGain: HTMLSpanElement;
   private reticle: HTMLDivElement;
+  private ult: Bar;
+  private weaponEl: HTMLDivElement;
+  private crosshair: HTMLDivElement;
   private boss: HTMLDivElement;
   private bossName: HTMLDivElement;
   private bossBar: Bar;
@@ -84,6 +93,7 @@ export class Hud {
     this.hp = new Bar(bars, 'hp', 0.9);
     this.st = new Bar(bars, 'st', 2.3);
     this.fuel = new Bar(bars, 'fuel', 1.5);
+    this.ult = new Bar(bars, 'ult', 1.6);
     const dread = el('div', 'dread', this.root);
     dread.innerHTML = `<svg viewBox="0 0 36 18"><path d="M1 9 Q18 -3 35 9 Q18 21 1 9 Z" fill="none" stroke="rgba(200,190,170,0.55)" stroke-width="1"/><path class="pupil" d="M18 9 m-3 0 a3 3 0 1 0 6 0 a3 3 0 1 0 -6 0" fill="#8e1d17"/></svg>`;
     this.dreadEye = dread.querySelector('.pupil')!;
@@ -98,6 +108,9 @@ export class Hud {
     this.marrowVal = el('span', 'val', m, '0');
     el('span', 'label', m, 'Marrow');
     this.reticle = el('div', 'reticle', this.root);
+    this.weaponEl = el('div', 'weapon', bl);
+    this.crosshair = el('div', 'crosshair', this.root);
+    el('i', '', this.crosshair);
     this.boss = el('div', 'boss', this.root);
     this.bossName = el('div', 'name', this.boss);
     this.bossBar = new Bar(this.boss, 'bossbar', 1);
@@ -125,6 +138,13 @@ export class Hud {
     this.hp.set(s.hp, s.maxHp);
     this.st.set(Math.max(0, s.st), s.maxSt);
     this.fuel.set(s.fuel, s.fuelMax);
+    this.ult.set(s.ult, 100);
+    if (this.changed('ultReady', s.ultReady)) this.ult.root.classList.toggle('ready', s.ultReady);
+    const wtxt = s.arrows === null ? s.weapon : `${s.weapon} · ${s.arrows} arrows`;
+    if (this.changed('weapon', wtxt)) this.weaponEl.textContent = wtxt;
+    if (this.changed('aiming', s.aiming)) this.crosshair.classList.toggle('on', s.aiming);
+    const dr = Math.round(s.draw * 20);
+    if (this.changed('draw', dr)) this.crosshair.style.setProperty('--draw', String(1 - dr / 20));
     if (this.changed('lanternOn', s.lanternOn)) {
       this.fuel.root.classList.toggle('off', !s.lanternOn);
       (this.lantern.querySelector('.glow') as SVGElement).style.opacity = s.lanternOn ? '1' : '0.08';

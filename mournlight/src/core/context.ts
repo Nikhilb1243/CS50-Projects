@@ -6,6 +6,8 @@ import type { ThirdPersonCamera } from './camera';
 import type { AudioEngine } from '../audio/audio';
 import type { Ambience } from '../audio/ambience';
 import type { Particles } from '../fx/particles';
+import type { GpuParticles } from '../fx/gpuparticles';
+import type { Abilities } from '../combat/abilities';
 import type { CombatSystem } from '../combat/combat';
 import type { HazardSystem } from '../combat/hazards';
 import type { LightManager } from '../world/lights';
@@ -28,6 +30,8 @@ export interface GameContext {
   audio: AudioEngine;
   ambience: Ambience;
   particles: Particles;
+  gpu: GpuParticles;
+  abilities: Abilities;
   combat: CombatSystem;
   hazards: HazardSystem;
   lights: LightManager;

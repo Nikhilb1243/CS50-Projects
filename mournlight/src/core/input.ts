@@ -13,6 +13,10 @@ export type Action =
   | 'lockon'
   | 'targetLeft'
   | 'targetRight'
+  | 'swap'
+  | 'ultimate'
+  | 'journal'
+  | 'map'
   | 'pause';
 
 export type MenuAction = 'up' | 'down' | 'left' | 'right' | 'accept' | 'back';
@@ -24,6 +28,10 @@ const KEY_BINDINGS: Record<string, Action> = {
   KeyE: 'interact',
   KeyF: 'lantern',
   KeyQ: 'lockon',
+  KeyX: 'swap',
+  KeyV: 'ultimate',
+  KeyJ: 'journal',
+  KeyM: 'map',
   Tab: 'lockon',
   ShiftLeft: 'sprint',
   ShiftRight: 'sprint',
@@ -303,6 +311,8 @@ export class Input {
         [PAD.UP, 'lantern'],
         [PAD.LEFT, 'targetLeft'],
         [PAD.RIGHT, 'targetRight'],
+        [PAD.DOWN, 'swap'],
+        [8, 'ultimate'],
       ];
       this.padHeld.clear();
       for (const [idx, action] of map) {

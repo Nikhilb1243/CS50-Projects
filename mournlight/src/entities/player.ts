@@ -15,6 +15,9 @@ import type { Enemy } from '../ai/enemy';
 import { TERRAIN } from '../world/layout';
 import { events } from '../core/events';
 import type { Quality } from '../core/settings';
+import { BOW, ULT_GAIN, ULT_MAX, WEAPONS, WEAPON_ORDER, type WeaponDef, type WeaponId } from '../data/weapons';
+import { WeaponRig } from './weapons';
+import { SwingTrail } from '../fx/trails';
 
 export type PState =
   | 'move'
@@ -31,6 +34,8 @@ export type PState =
   | 'interact'
   | 'fogwalk'
   | 'dead'
+  | 'draw'
+  | 'ult'
   | 'cinematic';
 
 export interface Progress {
@@ -39,6 +44,9 @@ export interface Progress {
   draughtsMax: number;
   dmgBonus: number;
   fuelMax: number;
+  weapons: WeaponId[];
+  weapon: WeaponId;
+  arrows: number;
 }
 
 interface ActiveAttack {
@@ -59,7 +67,15 @@ export class Player extends Actor {
   readonly team = 'player' as const;
   state: PState = 'move';
   stateTime = 0;
-  progress: Progress = { attrs: { ...START_ATTRIBUTES }, marrow: 0, draughtsMax: T.startDraughts, dmgBonus: 0, fuelMax: T.lanternFuelMax };
+  progress: Progress = { attrs: { ...START_ATTRIBUTES }, marrow: 0, draughtsMax: T.startDraughts, dmgBonus: 0, fuelMax: T.lanternFuelMax, weapons: ['longsword'], weapon: 'longsword', arrows: BOW.maxArrows };
+  /** Ultimate meter (0..ULT_MAX). */
+  ult = 0;
+  readonly rig: WeaponRig;
+  private trails: SwingTrail[];
+  /** Bow draw (0..1) and whether the player is aiming over the shoulder. */
+  draw = 0;
+  aiming = false;
+  private ultInvuln = 0;
   stamina = 100;
   maxStamina = 100;
   draughts = T.startDraughts;
@@ -115,8 +131,107 @@ export class Player extends Actor {
     this.anim.carry = keyPose('carry');
     this.anim.carryMask = ARMS_MASK;
     this.anim.carryWeight = 0.85;
+    const sk = this.model.sockets;
+    this.rig = new WeaponRig(sk.get('weaponBase')!.parent!, sk.get('lantern')!.parent!, sk, this.model.strikers as Map<string, [THREE.Object3D, THREE.Object3D]>);
+    this.trails = [new SwingTrail(ctx.scene), new SwingTrail(ctx.scene)];
     this.recalcStats(true);
     this.lastSafe.copy(at);
+  }
+
+  get weapon(): WeaponDef {
+    return WEAPONS[this.progress.weapon];
+  }
+
+  get ultReady(): boolean {
+    return this.ult >= ULT_MAX;
+  }
+
+  gainUlt(n: number): void {
+    this.ult = Math.min(ULT_MAX, this.ult + n);
+  }
+
+  /** Equip a weapon the player owns (inventory or quick-swap). */
+  equip(id: WeaponId): void {
+    if (!this.progress.weapons.includes(id)) return;
+    this.progress.weapon = id;
+    this.rig.equip(id);
+    const w = WEAPONS[id];
+    for (const t of this.trails) t.setColor(w.trail, w.trailIntensity);
+    this.trails[0].life = id === 'greatsword' ? 0.24 : id === 'daggers' ? 0.12 : 0.16;
+    this.trails[1].life = this.trails[0].life;
+  }
+
+  cycleWeapon(): void {
+    const owned = WEAPON_ORDER.filter((w) => this.progress.weapons.includes(w));
+    if (owned.length < 2) {
+      this.ctx.message('You carry no other armament.', 1.5);
+      return;
+    }
+    const next = owned[(owned.indexOf(this.progress.weapon) + 1) % owned.length];
+    this.equip(next);
+    this.ctx.audio.play('ui_move', { volume: 0.7, rate: 0.7 });
+    this.ctx.message(WEAPONS[next].name, 1.2);
+  }
+
+  giveWeapon(id: WeaponId): void {
+    if (!this.progress.weapons.includes(id)) this.progress.weapons.push(id);
+    this.equip(id);
+  }
+
+  private castUltimate(): void {
+    const w = this.weapon;
+    this.ult = 0;
+    let target: THREE.Vector3 | null = this.lockTarget?.alive ? this.lockTarget.pos.clone() : null;
+    if (!target && w.ultimate === 'deluge') target = this.aimPoint(40);
+    const dur = this.ctx.abilities.cast(w.ultimate, target);
+    this.ultInvuln = dur + 0.2;
+    this.setState('ult', dur);
+    this.ctx.message(w.ultimateName, 1.6);
+  }
+
+  /** Where the camera's centre ray meets the world (for the bow). */
+  aimPoint(max: number): THREE.Vector3 {
+    const cam = this.ctx.cam.camera;
+    const dir = cam.getWorldDirection(new THREE.Vector3());
+    const d = this.ctx.physics.rayDistance(cam.position, dir, max);
+    return cam.position.clone().addScaledVector(dir, d ?? max);
+  }
+
+  private fireArrow(): void {
+    const k = clamp01(this.draw);
+    const from = this.socketWorld('chest', new THREE.Vector3()).add(new THREE.Vector3(0, 0.15, 0));
+    const aim = this.aimPoint(80);
+    const dir = aim.sub(from).normalize();
+    // compensate a little for the drop at full draw so the crosshair stays honest
+    dir.y += 0.012 * (1 - k * 0.5);
+    const speed = BOW.speed[0] + (BOW.speed[1] - BOW.speed[0]) * k;
+    const dmg = (BOW.damage[0] + (BOW.damage[1] - BOW.damage[0]) * k) * this.damageMult;
+    this.ctx.abilities.fireArrow(from, dir, speed, dmg);
+    this.progress.arrows--;
+    this.ctx.audio.play('swing', { volume: 0.7, rate: 1.6 + k * 0.3 });
+    this.ctx.audio.play('block', { volume: 0.2, rate: 2.2 });
+    this.ctx.noise.emit(this.pos, 6);
+  }
+
+  private stDraw(dt: number): void {
+    const inp = this.ctx.input;
+    this.draw = Math.min(1, this.draw + dt / BOW.drawTime);
+    this.useStamina(dt * 4);
+    this.yaw = this.ctx.cam.yaw + Math.PI;
+    const dir = this.tmp.set(0, 0, 0);
+    const mag = this.inputDir(dir);
+    if (mag > 0.05) dir.normalize();
+    this.lerpVel(dir.x * T.walkSpeed * 0.6 * Math.min(1, mag), dir.z * T.walkSpeed * 0.6 * Math.min(1, mag), T.accel, dt);
+    this.applyGravityMove(dt, this.vel.x, this.vel.z);
+    if (!inp.held('light')) {
+      if (this.draw >= BOW.minDraw) this.fireArrow();
+      this.draw = 0;
+      this.setState('move');
+    } else if (this.buffered === 'roll') {
+      this.draw = 0;
+      this.setState('move');
+      this.tryActions();
+    }
   }
 
   get level(): number {
@@ -211,6 +326,17 @@ export class Player extends Actor {
       else this.ctx.message('The lantern is dry.', 2);
     }
     this.handleLockOn(dt);
+    this.ultInvuln = Math.max(0, this.ultInvuln - dt);
+    const free = this.state === 'move' || (this.state === 'attack' && this.atk !== null && attackPhase(this.atk.def, this.atk.frame, this.atk.extra) === 'recovery');
+    if (inp.pressed('swap') && this.state === 'move') this.cycleWeapon();
+    if (inp.pressed('ultimate')) {
+      if (!this.ultReady) this.ctx.message('The flame within is not yet full.', 1.2);
+      else if (free && this.grounded) {
+        this.atk = null;
+        this.castUltimate();
+      }
+    }
+    this.aiming = (this.state === 'draw' || (this.progress.weapon === 'bow' && inp.held('block') && this.state === 'move'));
 
     const inWaterNow = this.pos.y < TERRAIN.waterLevel - 0.1 && this.pos.x > TERRAIN.waterRect[0] && this.pos.x < TERRAIN.waterRect[2] && this.pos.z > TERRAIN.waterRect[1] && this.pos.z < TERRAIN.waterRect[3];
     this.inWater = inWaterNow;
@@ -231,6 +357,14 @@ export class Player extends Actor {
         break;
       case 'drink':
         this.stDrink(dt);
+        break;
+      case 'draw':
+        this.stDraw(dt);
+        break;
+      case 'ult':
+        this.vel.multiplyScalar(0.8);
+        this.applyGravityMove(dt, this.vel.x, this.vel.z);
+        if (this.stateTime >= this.stateDur) this.setState('move');
         break;
       case 'hurt':
       case 'stagger':
@@ -325,12 +459,22 @@ export class Player extends Actor {
     if (b === 'light' && this.stamina > 1) {
       this.buffered = null;
       if (this.tryCritical()) return true;
-      this.startAttack(attack('p_light1'));
+      if (this.progress.weapon === 'bow') {
+        if (this.progress.arrows <= 0) {
+          this.ctx.message('Your quiver is empty. Rest at a candle to gather arrows.', 2);
+          return true;
+        }
+        this.draw = 0;
+        this.setState('draw');
+        this.ctx.audio.play('step_wood', { volume: 0.3, rate: 0.5 });
+        return true;
+      }
+      this.startAttack(attack(this.weapon.light));
       return true;
     }
     if (b === 'heavy' && this.stamina > 1) {
       this.buffered = null;
-      this.startAttack(attack('p_heavy'));
+      this.startAttack(attack(this.weapon.heavy));
       return true;
     }
     if (b === 'drink' && allowMoveActions) {
@@ -350,8 +494,9 @@ export class Player extends Actor {
 
   private stMove(dt: number): void {
     const inp = this.ctx.input;
-    this.blocking = inp.held('block') && this.stamina > 0;
+    this.blocking = inp.held('block') && this.stamina > 0 && this.progress.weapon !== 'bow';
     if (this.tryActions()) return;
+    if (this.progress.weapon === 'bow' && inp.held('block')) this.approachYaw(this.ctx.cam.yaw + Math.PI, 14, dt);
 
     const dir = this.tmp.set(0, 0, 0);
     const mag = this.inputDir(dir);
@@ -488,7 +633,7 @@ export class Player extends Actor {
   // ---------------------------------------------------------------------------
   private startAttack(def: AttackDef, victim?: Enemy): void {
     if (def.stamina) this.useStamina(def.stamina);
-    this.atk = { def, frame: 0, extra: 0, charging: def.id === 'p_heavy', hitSet: new Set(), prev: [], queued: false, clanged: false, victim };
+    this.atk = { def, frame: 0, extra: 0, charging: def.id === 'p_heavy' || def.id === 'gs_heavy', hitSet: new Set(), prev: [], queued: false, clanged: false, victim };
     this.setState(victim ? 'riposte' : 'attack');
     this.blocking = false;
     // snap facing toward lock target or input
@@ -631,20 +776,24 @@ export class Player extends Actor {
     const a = this.atk;
     if (!a || a.victim) return;
     const def = a.def;
+    const w = this.weapon;
     const phase = attackPhase(def, a.frame, a.extra);
-    const cur = this.segs[0];
-    this.striker('weapon', cur);
+    const names = def.hitbox.kind === 'striker' ? def.hitbox.names : ['weapon'];
+    while (this.segs.length < names.length) this.segs.push({ a: new THREE.Vector3(), b: new THREE.Vector3() });
+    const cur = this.segs.slice(0, names.length);
+    names.forEach((n, i) => this.striker(n, cur[i]));
     if (phase !== 'active') {
-      a.prev = [{ a: cur.a.clone(), b: cur.b.clone() }];
+      a.prev = cur.map((c) => ({ a: c.a.clone(), b: c.b.clone() }));
       return;
     }
+    const heavy = def.id.endsWith('heavy') || w.id === 'greatsword';
     const charge = a.extra / 36;
     const dmg = def.damage * this.damageMult * (1 + charge * 0.6);
     const poise = def.poiseDamage * (1 + charge * 0.5);
     this.ctx.combat.sweep(
       this,
       a.prev,
-      [cur],
+      cur,
       def.hitbox.kind === 'striker' ? def.hitbox.radius : 0.15,
       a.hitSet,
       (target, point) => {
@@ -659,34 +808,39 @@ export class Player extends Actor {
           kind: 'melee',
           parryable: false,
           unblockable: false,
-          knockback: def.id === 'p_heavy' ? 2.5 : 1.2,
+          knockback: w.id === 'greatsword' ? 3.6 : heavy ? 2.5 : 1.2,
         });
         if (res === 'hit') {
-          this.ctx.hitstop(def.id === 'p_heavy' ? 0.11 : 0.065, 0.03);
-          this.ctx.shake(def.id === 'p_heavy' ? 0.35 : 0.18);
+          this.gainUlt(dmg * ULT_GAIN.dealt);
+          if (w.bleed > 0) (target as unknown as Enemy).addBleed?.(w.bleed, this);
+          this.ctx.hitstop((heavy ? 0.11 : 0.065) * w.hitstop, 0.03);
+          this.ctx.shake((heavy ? 0.35 : 0.18) * Math.min(1.5, w.hitstop));
+          this.ctx.gpu.sparks(point, dir.clone().setY(0.5), heavy ? 26 : 12, w.impact);
+          if (heavy) this.ctx.lights.flash(point, w.impact, 8, 4, 0.12);
         }
       },
       (prop, point) => {
         this.tmp.subVectors(prop.curr, this.pos).setY(0.4).normalize();
-        prop.impulse(this.tmp, def.id === 'p_heavy' ? 14 : 7);
+        prop.impulse(this.tmp, heavy ? 14 : 7);
         this.ctx.audio.playAt('step_wood', point, { volume: 0.8 });
         this.ctx.particles.dust(point, 4, 0x5a4a38);
       },
     );
     // blade scraping walls
     if (!a.clanged) {
-      const d = this.tmp.subVectors(cur.b, cur.a);
+      const c0 = cur[0];
+      const d = this.tmp.subVectors(c0.b, c0.a);
       const len = d.length();
       d.divideScalar(len);
-      const hit = this.ctx.physics.rayDistance(cur.a, d, len * 0.9);
+      const hit = this.ctx.physics.rayDistance(c0.a, d, len * 0.9);
       if (hit !== null) {
         a.clanged = true;
-        const p = cur.a.clone().addScaledVector(d, hit);
-        this.ctx.particles.sparks(p, d.clone().negate(), 12);
+        const p = c0.a.clone().addScaledVector(d, hit);
+        this.ctx.gpu.sparks(p, d.clone().negate(), 16);
         this.ctx.audio.playAt('block', p, { volume: 0.5, rate: 1.3 });
       }
     }
-    a.prev = [{ a: cur.a.clone(), b: cur.b.clone() }];
+    a.prev = cur.map((c) => ({ a: c.a.clone(), b: c.b.clone() }));
   }
 
   // ---------------------------------------------------------------------------
@@ -753,7 +907,7 @@ export class Player extends Actor {
   // ---------------------------------------------------------------------------
   receiveHit(h: HitInfo): HitResult {
     if (!this.alive || this.state === 'dead') return 'immune';
-    if (this.iframes) return 'dodged';
+    if (this.iframes || this.ultInvuln > 0) return 'dodged';
     if (this.state === 'grabbed' && h.kind !== 'grab') return 'immune';
     const attackerPos = h.attacker?.pos ?? h.point;
     const facingAttacker = facing(this.pos, this.yaw, attackerPos, Math.PI / 2);
@@ -774,6 +928,7 @@ export class Player extends Actor {
       this.ctx.shake(0.25);
       this.ctx.flash(0.18, 0xfff0d0);
       this.stamina = Math.min(this.maxStamina, this.stamina + 10);
+      this.gainUlt(ULT_GAIN.parry);
       this.atk = null;
       this.setState('move');
       events.emit('player:parry', { x: h.point.x, y: h.point.y, z: h.point.z });
@@ -805,6 +960,7 @@ export class Player extends Actor {
 
     // Take the hit
     if (!this.ctx.debug.god) this.health -= h.damage;
+    this.gainUlt(h.damage * ULT_GAIN.taken);
     this.hurtFlash = 1;
     this.damageTakenFlash = 1;
     this.ctx.audio.play('hurt', { volume: 0.8 });
@@ -970,7 +1126,10 @@ export class Player extends Actor {
     this.visualLift = 0;
     switch (this.state) {
       case 'move':
-        if (this.parryTimer > 0) {
+        if (this.aiming) {
+          p.set(keyPose('bow_rest'));
+          this.anim.setAction(true, UPPER_MASK, 16, 10);
+        } else if (this.parryTimer > 0 && this.progress.weapon !== 'bow') {
           p.set(keyPose('parry'));
           this.anim.setAction(true, UPPER_MASK, 30, 10);
         } else if (this.blocking) {
@@ -996,6 +1155,20 @@ export class Player extends Actor {
           this.anim.setAction(true, undefined, 30, 10);
         }
         break;
+      case 'draw':
+        blendPose(p, keyPose('bow_rest'), keyPose('bow_aim'), smoothstep(0, 0.6, this.draw));
+        this.anim.setAction(true, UPPER_MASK, 20, 10);
+        break;
+      case 'ult': {
+        const u = this.stateTime / Math.max(0.1, this.stateDur);
+        const w = this.progress.weapon;
+        if (w === 'bow') p.set(keyPose('bow_sky'));
+        else if (w === 'greatsword') blendPose(p, keyPose('heavy_wind'), keyPose('heavy_hit'), smoothstep(0.3, 0.45, u));
+        else if (w === 'daggers') p.set(keyPose('thrust_hit'));
+        else blendPose(p, keyPose('slashR_wind'), keyPose('slashR_hit'), smoothstep(0.2, 0.4, u));
+        this.anim.setAction(u < 0.9, undefined, 30, 8);
+        break;
+      }
       case 'drink':
         p.set(keyPose('drink'));
         this.anim.setAction(this.stateTime < this.stateDur - 0.25, UPPER_MASK, 10, 8);
@@ -1052,5 +1225,19 @@ export class Player extends Actor {
     this.model.flash(this.hurtFlash);
     const flask = this.model.sockets.get('flask');
     if (flask) flask.visible = this.state === 'drink';
+    this.rig.setDraw(this.state === 'draw' ? this.draw : 0, this.state === 'draw' || this.aiming);
+    const a = this.atk;
+    const now = this.ctx.time.real;
+    if (a && !a.victim && (this.state === 'attack')) {
+      const ph = attackPhase(a.def, a.frame, a.extra);
+      if (ph === 'active' || (ph === 'recovery' && a.frame - (a.def.windup + a.extra + a.def.active) < 3)) {
+        const names = a.def.hitbox.kind === 'striker' ? a.def.hitbox.names : ['weapon'];
+        const seg = { a: this.tmp.clone(), b: this.tmp2.clone() };
+        names.slice(0, 2).forEach((n, i) => {
+          if (this.striker(n, seg)) this.trails[i].push(seg.a, seg.b, now);
+        });
+      }
+    }
+    for (const t of this.trails) t.update(now);
   }
 }

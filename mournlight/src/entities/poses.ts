@@ -109,6 +109,34 @@ export const STANCE_POSE: Pose = poseFrom(null, STANCE);
 
 const RAW: Record<string, PoseSpec> = {
   // ---- Revenant --------------------------------------------------------------
+  // bow held in the right hand, arm forward; left hand draws to the cheek
+  bow_rest: {
+    chest: [0, 0.5, 0],
+    head: [0, -0.45, 0],
+    upperArmR: [-1.3, 0.2, -0.1],
+    forearmR: [-0.15, 0, 0],
+    handR: [0, 0, 0],
+    upperArmL: [-1.2, -0.3, 0.3],
+    forearmL: [-0.6, 0, 0],
+  },
+  bow_aim: {
+    chest: [0, 0.75, 0],
+    head: [0, -0.7, 0],
+    upperArmR: [-1.55, 0.35, -0.05],
+    forearmR: [0, 0, 0],
+    handR: [0, 0, 0],
+    upperArmL: [-1.4, -0.2, 0.9],
+    forearmL: [-2.1, 0, 0],
+  },
+  bow_sky: {
+    spine: [-0.25, 0, 0],
+    chest: [-0.35, 0.5, 0],
+    head: [-0.5, -0.4, 0],
+    upperArmR: [-2.8, 0.3, -0.1],
+    forearmR: [0, 0, 0],
+    upperArmL: [-2.4, -0.2, 0.7],
+    forearmL: [-1.9, 0, 0],
+  },
   guard: {
     chest: [0.05, -0.12, 0],
     head: [-0.05, 0.1, 0],

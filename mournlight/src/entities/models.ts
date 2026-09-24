@@ -195,15 +195,7 @@ function buildRevenant(): ModelInstance {
   b.addPair('thighR', 'thighL', cyl(0.07, 0.12, 0.58, 4), cloak, { pos: [-0.02, -0.2, 0.09], rot: [0.08, Math.PI / 4, 0.06], scale: [1, 1, 0.18] });
   b.addPair('thighR', 'thighL', cyl(0.08, 0.13, 0.66, 4), cloak2, { pos: [-0.02, -0.23, -0.09], rot: [-0.08, Math.PI / 4, 0.05], scale: [1, 1, 0.18] });
 
-  // Wickblade: grip along hand -Y, blade continues
-  b.add('handR', cyl(0.018, 0.018, 0.2, 6), 0x2a1c14, { pos: [0, -0.04, 0], slot: 0 });
-  b.add('handR', sph(0.03, 6, 5), 0x5e5a52, { pos: [0, 0.07, 0], slot: 1 });
-  b.add('handR', box(0.2, 0.03, 0.04), 0x57544f, { pos: [0, -0.14, 0], slot: 1 });
-  b.add('handR', cyl(0.035, 0.02, 0.05, 8, true), 0x6b5a3a, { pos: [0, -0.18, 0], slot: 1 });
-  b.add('handR', box(0.045, 0.95, 0.011), 0x8b9097, { pos: [0, -0.64, 0], slot: 1 });
-  b.add('handR', box(0.012, 0.9, 0.016), 0x3a3c40, { pos: [0, -0.62, 0], slot: 1 });
-  b.add('handR', cone(0.024, 0.08, 4), 0x8b9097, { pos: [0, -1.15, 0], rot: [Math.PI, 0, 0], scale: [1, 1, 0.3], slot: 1 });
-
+  // weapons are separate meshes attached by entities/weapons.ts (WeaponRig)
   return finish(b, charMaterials({ doubleSide: true }), 1, (bone, sockets, strikers) => {
     const base = socket(bone('handR'), 'weaponBase', [0, -0.2, 0], sockets);
     const tip = socket(bone('handR'), 'weaponTip', [0, -1.17, 0], sockets);

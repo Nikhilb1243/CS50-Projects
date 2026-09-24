@@ -75,3 +75,13 @@ pmndrs postprocessing + Web Audio), everything original (names, lore, enemies, d
 - `world/wetness.ts`: wet-surface/puddle shader patch on world materials + terrain, amount per region. New textures: rusted iron with metalness map, wet wood (boardwalks, stilts), flesh (the Godwound heart).
 - `world/shafts.ts` + `SHAFTS` in layout: moonlight shafts through the cathedral windows and roof breaks.
 - Dev helpers: `window.__settings.set('quality','ultra')`, `window.__lum()` (adapted luminance).
+
+### Milestone 2: done (session 1)
+- `data/weapons.ts`: 4 weapons (Wickblade longsword, Coffin-Lid Slab greatsword, Hush and Lull twin daggers, Gloamstring bow) with own light chains/heavies (new attack defs merged into `ATTACKS`), stats, trail/impact colours, hit-stop scale, bleed, ultimates. `BOW` and `ULT_*` tuning.
+- `entities/weapons.ts`: procedural weapon meshes + `WeaponRig` (attaches to hand bones, moves striker sockets per weapon, left-hand `weaponL` striker for the daggers, animated bow string). The Wickblade is no longer baked into the Revenant mesh.
+- Player: `equip/cycleWeapon/giveWeapon`, bow `draw` state (hold strike to draw, release to loose; guard = aim; over-the-shoulder camera zoom `cam.aim`, crosshair that tightens with draw), ultimate meter (`gainUlt` from damage dealt, parries, hits taken), `ult` state with i-frames. Keys: X swap (D-pad down), V ultimate (Back/View).
+- `combat/abilities.ts`: arrows with gravity, world sticking, capsule hits and headshot bonus; ultimates Pale Deluge (signal arrow, 46 blue-flame arrows over a marked circle, impact bursts, lingering blue fire DoT patches, slow-mo, flashes, shake), Pale Crescent, Gravebreak (fissure eruptions), Hushstep (blink through up to 5 foes, cold light cuts, bleed).
+- `fx/gpuparticles.ts`: instanced GPU particle system (analytic motion in the vertex shader, ring-buffer writes, velocity stretch; additive / alpha / haze layers). Heat haze is approximated with shimmering low-alpha quads (no true refraction yet).
+- `fx/trails.ts`: swing ribbons. `LightManager.flash()`: transient lights borrow the fixed pool (no extra lights).
+- Enemy bleed build-up (`Enemy.addBleed`). Weapons are pickups (bow: crypt near the alcove; daggers: Brinemoor house; slab: Gallowwood hollow); arrows refill at shrines; weapons/arrows saved. Pause menu -> Armaments page to equip.
+- Dev: `?arms&weapon=bow&ult`, `window.__game`.

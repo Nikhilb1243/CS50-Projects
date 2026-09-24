@@ -15,6 +15,9 @@ export interface SaveData {
   remnant: { p: [number, number, number]; amount: number } | null;
   playTime: number;
   deaths: number;
+  weapons?: string[];
+  weapon?: string;
+  arrows?: number;
 }
 
 const KEY = 'mournlight.save.v1';

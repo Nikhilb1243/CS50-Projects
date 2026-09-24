@@ -258,6 +258,9 @@ export const ITEM_INFO: Record<ItemKind, { name: string; desc: string; color: nu
   vessel: { name: 'Tallow Vessel', desc: 'A clay vessel slick with rendered tallow. Holds one more Draught.', color: 0xffc070 },
   oil: { name: 'Grave-Moss Oil', desc: 'Oil pressed from grave-moss. The lantern holds more and drinks slower.', color: 0x9fe0a0 },
   whetstone: { name: 'Knucklebone Whetstone', desc: 'A whetstone carved from a knuckle. Your strikes bite deeper.', color: 0xff8870 },
+  greatsword: { name: 'Coffin-Lid Slab', desc: 'Grave iron, heavy as guilt. Slow blows that stagger anything. (X to swap arms)', color: 0xff9a60 },
+  daggers: { name: 'Hush and Lull', desc: 'Twin needles. Quick cuts that make wounds bleed. (X to swap arms)', color: 0xa0d0ff },
+  bow: { name: 'Gloamstring', desc: 'An ashwood bow. Hold strike to draw, release to loose; guard to aim. Arrows return at candles. (X to swap arms)', color: 0xd8c8a0 },
 };
 
 export class Pickup implements Interactable {

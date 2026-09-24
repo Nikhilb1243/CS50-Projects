@@ -3,7 +3,7 @@ import { settings, type Settings } from '../core/settings';
 import type { MenuAction } from '../core/input';
 import { levelCost, levelOf, maxHealth, maxStamina, damageMultiplier, type Attributes } from '../data/stats';
 
-export type ScreenName = 'loading' | 'title' | 'pause' | 'settings' | 'controls' | 'death' | 'shrine' | 'levelup' | 'travel' | 'intro' | 'victory';
+export type ScreenName = 'arms' | 'loading' | 'title' | 'pause' | 'settings' | 'controls' | 'death' | 'shrine' | 'levelup' | 'travel' | 'intro' | 'victory';
 
 export interface MenuCallbacks {
   newGame(): void;
@@ -15,6 +15,19 @@ export interface MenuCallbacks {
   leaveShrine(): void;
   click(): void;
   move(): void;
+  arms(): ArmInfo[];
+  equip(id: string): void;
+}
+
+export interface ArmInfo {
+  id: string;
+  name: string;
+  desc: string;
+  stats: { damage: number; speed: number; stagger: number; reach: number };
+  ult: string;
+  ultDesc: string;
+  owned: boolean;
+  equipped: boolean;
 }
 
 export interface LevelInfo {
@@ -37,6 +50,9 @@ const CONTROLS: [string, string, string][] = [
   ['Tallow Draught', 'R', 'X'],
   ['Interact / rest', 'E', 'Y'],
   ['Shutter lantern', 'F', 'LT / D-pad up'],
+  ['Swap armament', 'X', 'D-pad down'],
+  ['Ultimate (meter full)', 'V', 'Back / View'],
+  ['Bow: draw / aim', 'Hold left mouse / right mouse', 'Hold RB / LB'],
   ['Pause', 'Esc', 'Start'],
   ['Debug', 'F1', ''],
 ];
@@ -72,6 +88,36 @@ export class Menus {
     this.buildLevelUp();
     this.buildTravel();
     this.buildVictory();
+    this.buildArms();
+  }
+
+  private armsList!: HTMLDivElement;
+  private buildArms(): void {
+    const s = this.screen('arms', 'dim');
+    const p = el('div', 'panel', s);
+    el('h2', '', p, 'Armaments');
+    el('div', 'sub', p, 'Choose what the Revenant carries. The flame within answers each differently.');
+    this.armsList = el('div', 'menu', p);
+  }
+
+  private renderArms(): void {
+    const m = this.armsList;
+    m.innerHTML = '';
+    const pips = (n: number): string => '\u25c6'.repeat(n) + '\u25c7'.repeat(5 - n);
+    for (const a of this.cb.arms()) {
+      if (!a.owned) {
+        el('div', 'sub', m, '???  \u2014  not yet found');
+        continue;
+      }
+      this.button(m, `${a.equipped ? '\u25b8 ' : ''}${a.name}`, () => {
+        this.cb.equip(a.id);
+        this.renderArms();
+      });
+      const d = el('div', 'sub', m, escapeHtml(`${a.desc}  Damage ${pips(a.stats.damage)}  Speed ${pips(a.stats.speed)}  Stagger ${pips(a.stats.stagger)}  Reach ${pips(a.stats.reach)}.  Ultimate: ${a.ult} \u2014 ${a.ultDesc}`));
+      d.style.fontSize = '12px';
+      d.style.maxWidth = '560px';
+    }
+    this.button(m, 'Back', () => this.back());
   }
 
   private screen(name: ScreenName, cls = ''): HTMLDivElement {
@@ -97,6 +143,7 @@ export class Menus {
     this.current = name;
     if (name === 'levelup') this.renderLevelUp();
     if (name === 'travel') this.renderTravel();
+    if (name === 'arms') this.renderArms();
     if (name === 'shrine') this.renderShrine();
     if (name === 'settings') this.syncSettings();
     // focus the first control
@@ -228,6 +275,7 @@ export class Menus {
     el('div', 'title-sub', s, 'Paused');
     const m = el('div', 'menu', s);
     this.button(m, 'Resume', () => this.cb.resume());
+    this.button(m, 'Armaments', () => this.show('arms', true));
     this.button(m, 'Settings', () => this.show('settings', true));
     this.button(m, 'Controls', () => this.show('controls', true));
     this.button(m, 'Return to Title', () => this.cb.quitToTitle());
