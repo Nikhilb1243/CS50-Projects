@@ -494,7 +494,7 @@ function buildWickMother(): ModelInstance {
   b.grime = 0.25;
   const wax = 0xcfc5ad;
   const wax2 = 0xa3957a;
-  const robe = 0x2a1f1a;
+  const robe = 0x43332c;
   const skin = 0x8c7f6c;
 
   b.add('hips', lathe([[0.0, 0.1], [0.24, 0.08], [0.3, -0.2], [0.4, -0.55], [0.55, -0.85], [0.62, -0.97], [0.0, -0.97]], 14), robe);

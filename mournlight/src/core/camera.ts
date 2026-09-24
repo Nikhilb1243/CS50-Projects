@@ -102,7 +102,9 @@ export class ThirdPersonCamera {
     this.dir.set(Math.sin(this.yaw) * cp, -Math.sin(this.pitch), Math.cos(this.yaw) * cp);
     const rx = Math.cos(this.yaw);
     const rz = -Math.sin(this.yaw);
-    const dist = this.distance + this.lockBlend * 0.6;
+    // pull back further for towering targets so both stay framed
+    const big = clamp((this.lockHeight - 2) * 0.55, 0, 2.2);
+    const dist = this.distance + this.lockBlend * (0.6 + big);
     this.desired
       .copy(head)
       .addScaledVector(this.dir, dist)

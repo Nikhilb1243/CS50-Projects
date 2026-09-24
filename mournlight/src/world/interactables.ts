@@ -171,8 +171,8 @@ void main() {
   vec2 p = vUv * vec2(3.0, 3.0);
   float f = fbm(p + vec2(uTime * 0.15, -uTime * 0.35)) * 0.6 + fbm(p * 1.7 - vec2(uTime * 0.25, uTime * 0.1)) * 0.4;
   float edge = smoothstep(0.0, 0.18, vUv.x) * smoothstep(1.0, 0.82, vUv.x) * smoothstep(0.0, 0.1, vUv.y) * smoothstep(1.0, 0.75, vUv.y);
-  float a = (0.35 + f * 0.8) * edge * uAlpha;
-  vec3 col = mix(vec3(0.55, 0.58, 0.62), vec3(1.2, 1.15, 1.05), f);
+  float a = (0.2 + f * 0.55) * edge * uAlpha;
+  vec3 col = mix(vec3(0.3, 0.33, 0.37), vec3(0.75, 0.72, 0.66), f);
   gl_FragColor = vec4(col, a);
 }`;
 

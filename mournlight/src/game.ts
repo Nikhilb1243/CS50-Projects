@@ -855,10 +855,11 @@ export class Game {
       this.cam.lockHeight = lt ? lt.height * (lt.def.type === 'boss' ? 0.55 : 0.9) : 1.2;
       if (this.mode === 'cinematic') {
         const b = this.boss;
-        const dir = this.tmp.subVectors(p.pos, b.pos).setY(0).normalize();
+        const toBoss = this.tmp.subVectors(b.pos, p.pos).setY(0).normalize();
+        const side = new THREE.Vector3(-toBoss.z, 0, toBoss.x);
         const k = clamp01(this.cinematicT / 1.2);
         this.cam.override = {
-          pos: p.pos.clone().addScaledVector(dir, 4.5).add(new THREE.Vector3(1.5, 2.2, 0)),
+          pos: p.pos.clone().addScaledVector(toBoss, 3).addScaledVector(side, 3.2).add(new THREE.Vector3(0, 2.2, 0)),
           look: b.pos.clone().setY(b.pos.y + 3.5 + 1.5 * clamp01(this.cinematicT / 2)),
           blend: this.cinematicT < 2.9 ? k : 1 - clamp01((this.cinematicT - 2.9) / 0.6),
         };
