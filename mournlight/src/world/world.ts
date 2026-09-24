@@ -186,7 +186,7 @@ export class World {
     this.heart.position.copy(pos);
     this.heart.castShadow = true;
     this.scene.add(this.heart);
-    this.heartFlame = this.lights.addFlame(pos.clone().add(new THREE.Vector3(0, 0, 3.5)), { color: 0xff2a10, intensity: 26, distance: 42, lit: false, tongues: [], tag: 'heart' });
+    this.heartFlame = this.lights.addFlame(pos.clone().add(new THREE.Vector3(0, -2, 5)), { color: 0xff2a10, intensity: 60, distance: 70, lit: false, tongues: [], tag: 'heart' });
     // veins
     for (let i = 0; i < 7; i++) {
       const a = (i / 7) * Math.PI * 2;
@@ -479,7 +479,7 @@ export class World {
     const hm = this.heart.material as THREE.MeshStandardMaterial;
     hm.emissive.setRGB(0.5 * pulse + 0.05, 0.03 * pulse, 0.01);
     this.heart.scale.setScalar(1 + pulse * 0.03);
-    if (this.heartFlame.lit) this.heartFlame.intensity = 18 + pulse * 20;
+    if (this.heartFlame.lit) this.heartFlame.intensity = 45 + pulse * 45;
   }
 
   get time(): number {

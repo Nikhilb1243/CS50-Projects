@@ -11,6 +11,7 @@ Every model, texture and sound is generated in code: there are no asset files.
 ## Running
 
 ```bash
+cd mournlight      # the game lives in this folder of the repository
 npm install
 npm run dev        # http://localhost:5173
 npm run build      # type-check + production bundle in dist/

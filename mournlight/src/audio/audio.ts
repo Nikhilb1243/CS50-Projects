@@ -218,6 +218,13 @@ export class EntityVoice {
     return this.audio.isPlaying;
   }
 
+  /** Stop and detach from the audio graph (entity removed for good). */
+  dispose(): void {
+    this.stop();
+    this.audio.removeFromParent();
+    this.audio.gain.disconnect();
+  }
+
   get looping(): string | null {
     return this.loopName;
   }

@@ -101,7 +101,7 @@ export const ENEMIES: Record<EnemyType, EnemyDef> = {
   },
   boss: {
     type: 'boss', name: 'Oskeline, the Wick-Mother', model: 'wickmother', style: 'boss',
-    health: 3400, poise: 9999, poiseRegen: 0, radius: 1.2, height: 5.6, scale: 2.9,
+    health: 2600, poise: 9999, poiseRegen: 0, radius: 1.2, height: 5.6, scale: 2.9,
     walkSpeed: 1.8, runSpeed: 3.6, turnSpeed: 2.2,
     sightRange: 80, sightFov: 360, hearing: 2, lanternAttract: 80,
     attacks: [

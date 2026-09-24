@@ -36,6 +36,8 @@ type Mode = 'loading' | 'title' | 'playing' | 'paused' | 'menu' | 'dead' | 'cine
 
 /** Where the title screen's camera lingers: the cathedral portal. */
 const TITLE_FOCUS = new THREE.Vector3(0, 14.3, -44);
+const HEMI_SKY = new THREE.Color(0x4f5d74);
+const HEMI_RED = new THREE.Color(0x8a2a1c);
 
 export class Game {
   private renderer: THREE.WebGLRenderer;
@@ -265,6 +267,10 @@ export class Game {
     if (q.has('god')) this.debug.god = true;
     if (q.has('debug')) this.debug.enabled = true;
     if (q.has('marrow')) this.addMarrow(Number(q.get('marrow')));
+    if (q.has('phase2')) {
+      this.world.setArenaPhase(2);
+      this.rotK = 1;
+    }
     if (q.has('boss')) {
       this.player.teleport(new THREE.Vector3(0, 4.2, -156));
       window.setTimeout(() => this.startBossIntro(), 500);
@@ -379,8 +385,11 @@ export class Game {
     });
   }
 
+  private pausedAt = 0;
+
   private pause(): void {
     if (this.mode !== 'playing') return;
+    this.pausedAt = performance.now();
     this.mode = 'paused';
     this.input.gameplayEnabled = false;
     this.menus.show('pause');
@@ -820,7 +829,9 @@ export class Game {
     }
     if (this.input.consume('pause')) {
       if (this.mode === 'playing') this.pause();
-      else if (this.mode === 'paused') this.resume();
+      // Esc both releases pointer lock (which pauses) and sends a key press:
+      // ignore the echo so the game does not immediately resume.
+      else if (this.mode === 'paused' && performance.now() - this.pausedAt > 400) this.resume();
     }
     let a;
     while ((a = this.input.consumeMenu())) {
@@ -917,6 +928,9 @@ export class Game {
     this.fog.color.copy(this.fogColor);
     this.fog.density = this.fogDensity;
     this.moonK = damp(this.moonK, r.id === 'crypt' ? 0 : r.moon > 0 ? 1 : 0, 1, dt);
+    // the rotting heart bathes the Godwound in red once the Wick-Mother is unmade
+    const red = r.id === 'arena' && this.world.arenaPhase === 2;
+    this.world.lights.hemi.color.lerp(red ? HEMI_RED : HEMI_SKY, 1 - Math.exp(-1.5 * dt));
     fogUniforms.fogHeightBase.value = damp(fogUniforms.fogHeightBase.value, this.focus.y - 2, 1, dt);
   }
 

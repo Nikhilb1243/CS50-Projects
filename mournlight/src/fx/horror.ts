@@ -40,6 +40,11 @@ export class HorrorDirector {
       const model = models.create('silhouette');
       model.root.position.set(...p);
       model.setShadows(false);
+      // silhouettes ignore the fog so they read as dark cutouts against it
+      for (const m of model.materials) {
+        (m as THREE.MeshStandardMaterial).fog = false;
+        m.needsUpdate = true;
+      }
       const head = model.rig.bone('head');
       const eyes: THREE.Mesh[] = [];
       for (const x of [-0.03, 0.03]) {
@@ -173,7 +178,9 @@ export class HorrorDirector {
       s.stare = looking ? s.stare + dt : Math.max(0, s.stare - dt);
       const fade = d < 30 || s.stare > 3.5;
       s.opacity = damp(s.opacity, fade ? 0 : 1, fade ? 2.5 : 0.4, dt);
-      s.model.setOpacity(Math.max(0.001, s.opacity));
+      // farther figures are fainter, but never fully swallowed by the fog
+      const distK = 1 - clamp01((d - 55) / 40) * 0.6;
+      s.model.setOpacity(Math.max(0.001, s.opacity * 0.85 * distK));
       for (const e of s.eyes) e.visible = s.opacity > 0.3;
       if (fade && s.opacity < 0.02) {
         s.hidden = true;

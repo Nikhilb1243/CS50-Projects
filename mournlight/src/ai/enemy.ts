@@ -751,6 +751,13 @@ export class Enemy extends Actor {
     if (this.player.lockTarget === this) this.player.lockTarget = null;
   }
 
+  dispose(): void {
+    this.voice.dispose();
+    this.breath.dispose();
+    this.feet.dispose();
+    super.dispose();
+  }
+
   /** Restore to spawn (on rest / player death). */
   reset(): void {
     this.alive = true;
