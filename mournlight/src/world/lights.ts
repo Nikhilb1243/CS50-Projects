@@ -2,10 +2,16 @@ import * as THREE from 'three';
 import { noise1, lerp, damp } from '../core/math';
 import { CSM } from 'three/examples/jsm/csm/CSM.js';
 import { MAX_POINT_LIGHTS, QUALITY_PROFILES, type Quality, type QualityProfile } from '../core/settings';
+import type { RegionLighting } from '../data/lighting';
 
 type OnBeforeCompile = (shader: THREE.WebGLProgramParametersWithUniforms, renderer: THREE.WebGLRenderer) => void;
 /** Direction towards the shadow-casting moon (also the direction of window light shafts, negated). */
 export const MOON_OFFSET = new THREE.Vector3(38, 70, 22);
+const _v = new THREE.Vector3();
+const _m = new THREE.Matrix4();
+const _inv = new THREE.Matrix4();
+const _zero = new THREE.Vector3();
+const _up = new THREE.Vector3(0, 1, 0);
 
 export interface FlameSource {
   pos: THREE.Vector3;
@@ -20,6 +26,8 @@ export interface FlameSource {
   tongues: { off: THREE.Vector3; scale: number; idx: number }[];
   flicker: number;
   tag?: string;
+  /** Brightness kept while unlit (shrines smoulder so they can be found in the dark). */
+  idle: number;
 }
 
 const MAX_TONGUES = 320;
@@ -41,7 +49,14 @@ export class LightManager {
   private moonTarget = new THREE.Object3D();
   moonIntensity = 0.5;
   hemiIntensity = 0.3;
-  private shadowSnap = 4;
+  /** Soft, shadowless light that follows the player (see update). */
+  readonly fill: THREE.PointLight;
+  fillIntensity = 1;
+  /** Set by the game to force a sky tint (e.g. the Godwound bleeding red). */
+  hemiSkyOverride: THREE.Color | null = null;
+  private moonColorT = new THREE.Color(0x8ea4c8);
+  private hemiSkyT = new THREE.Color(0x4f5d74);
+  private hemiGroundT = new THREE.Color(0x1c1914);
   private flameTime: { value: number };
   private activeLights = 0;
   /** Cascaded shadows (High/Ultra). When active the single moon light is hidden. */
@@ -66,13 +81,16 @@ export class LightManager {
     cam.bottom = -34;
     cam.near = 1;
     cam.far = 180;
-    this.moon.shadow.bias = -0.0006;
-    this.moon.shadow.normalBias = 0.04;
+    this.moon.shadow.bias = -0.00008;
+    this.moon.shadow.normalBias = 0.05;
     this.moon.target = this.moonTarget;
     scene.add(this.moon, this.moonTarget);
 
     this.hemi = new THREE.HemisphereLight(0x4f5d74, 0x1c1914, 0.3);
     scene.add(this.hemi);
+    this.fill = new THREE.PointLight(0xc9d2e0, 0, 9, 2);
+    this.fill.castShadow = false;
+    scene.add(this.fill);
 
     // The pool is allocated at its maximum size; quality presets hide the lights they do not use.
     for (let i = 0; i < MAX_POINT_LIGHTS; i++) {
@@ -143,7 +161,7 @@ export class LightManager {
 
   addFlame(
     pos: THREE.Vector3,
-    opts: { color?: THREE.ColorRepresentation; intensity?: number; distance?: number; lit?: boolean; tongues?: { off: THREE.Vector3; scale: number }[]; tag?: string } = {},
+    opts: { color?: THREE.ColorRepresentation; intensity?: number; distance?: number; lit?: boolean; tongues?: { off: THREE.Vector3; scale: number }[]; tag?: string; idle?: number } = {},
   ): FlameSource {
     const tongues = (opts.tongues ?? [{ off: new THREE.Vector3(), scale: 0.25 }]).map((t) => {
       const idx = this.tongueCount < MAX_TONGUES ? this.tongueCount++ : -1;
@@ -156,19 +174,25 @@ export class LightManager {
       intensity: opts.intensity ?? 6,
       distance: opts.distance ?? 11,
       lit: opts.lit ?? true,
-      level: opts.lit === false ? 0 : 1,
+      level: opts.lit === false ? (opts.idle ?? 0) : 1,
       seed: Math.random() * 100,
       tongues,
       flicker: 1,
       tag: opts.tag,
+      idle: opts.idle ?? 0,
     };
     this.flames.push(f);
     return f;
   }
 
-  setRegionLighting(moon: number, ambient: number): void {
-    this.moonIntensity = moon * 1.3;
-    this.hemiIntensity = ambient;
+  /** Apply a region's hand-tuned key/fill (data/lighting.ts); colours ease in over a second or two. */
+  setRegionLighting(L: RegionLighting, keyScale = 1): void {
+    this.moonIntensity = L.key.intensity * keyScale;
+    this.hemiIntensity = L.fill.intensity;
+    this.moonColorT.setHex(L.key.color);
+    this.hemiSkyT.setHex(L.fill.sky);
+    this.hemiGroundT.setHex(L.fill.ground);
+    this.fillIntensity = L.playerFill;
   }
 
   /** Approximate flame illumination at a point (0 = dark). */
@@ -187,18 +211,36 @@ export class LightManager {
   update(dt: number, t: number, focus: THREE.Vector3, camPos: THREE.Vector3): void {
     this.moon.intensity = damp(this.moon.intensity, this.moonIntensity, 1.5, dt);
     this.hemi.intensity = damp(this.hemi.intensity, this.hemiIntensity, 1.5, dt);
-    // Moon shadow frustum follows the focus, snapped to texels to avoid swimming
-    const s = this.shadowSnap;
-    const fx = Math.round(focus.x / s) * s;
-    const fz = Math.round(focus.z / s) * s;
-    this.moonTarget.position.set(fx, focus.y, fz);
-    this.moon.position.set(fx, focus.y, fz).add(MOON_OFFSET);
+    const ck = 1 - Math.exp(-1.5 * dt);
+    this.moon.color.lerp(this.moonColorT, ck);
+    this.hemi.color.lerp(this.hemiSkyOverride ?? this.hemiSkyT, ck);
+    this.hemi.groundColor.lerp(this.hemiGroundT, ck);
+    // Soft fill carried with the player: above and a little toward the camera, so faces and the
+    // ground around the feet stay readable without flattening the lantern's key light.
+    this.fill.intensity = damp(this.fill.intensity, this.fillIntensity, 1.5, dt);
+    _v.subVectors(camPos, focus).setY(0);
+    if (_v.lengthSq() > 1e-4) _v.normalize();
+    this.fill.position.copy(focus).addScaledVector(_v, 1.2).setY(focus.y + 2.4);
+    // Moon shadow frustum follows the focus, snapped to whole shadow-map texels in light space
+    // (x, y and depth), so the map never swims or shimmers as the player walks, climbs or jumps.
+    const sh = this.moon.shadow;
+    const texel = (sh.camera.right - sh.camera.left) / sh.mapSize.x;
+    _m.lookAt(MOON_OFFSET, _zero, _up);
+    _inv.copy(_m).invert();
+    _v.copy(focus).applyMatrix4(_inv);
+    _v.set(Math.round(_v.x / texel) * texel, Math.round(_v.y / texel) * texel, Math.round(_v.z / 2) * 2);
+    _v.applyMatrix4(_m);
+    this.moonTarget.position.copy(_v);
+    this.moon.position.copy(_v).add(MOON_OFFSET);
+    // bias in proportion to the texel footprint: no acne, and no shadows detached from their feet
+    sh.normalBias = texel * 1.6;
+    sh.bias = -0.00008;
 
     // Flicker + tongues
     this.flameTime.value = t;
     const m = this.tongueMesh;
     for (const f of this.flames) {
-      const target = f.lit ? 1 : 0;
+      const target = f.lit ? 1 : f.idle;
       f.level = damp(f.level, target, f.lit ? 2.5 : 4, dt);
       const fast = f.tag === 'candles' ? 1.6 : 1;
       const n = noise1(t * 7.3 * fast, f.seed) * 0.5 + noise1(t * 17.1 * fast, f.seed + 3) * 0.25;
@@ -207,7 +249,7 @@ export class LightManager {
       f.flicker = (0.82 + n * 0.35) * (1 - gust * gust * 0.4);
       for (const tg of f.tongues) {
         if (tg.idx < 0) continue;
-        const sc = tg.scale * f.level * (0.85 + n * 0.4);
+        const sc = tg.scale * (f.idle > 0 ? Math.max(0, f.level - f.idle) / (1 - f.idle) : f.level) * (0.85 + n * 0.4);
         this.dummy.position.copy(f.pos).add(tg.off);
         this.dummy.rotation.set(noise1(t * 3 + tg.idx, f.seed) * 0.2, t * 0.5 + tg.idx, noise1(t * 2.7 + tg.idx, f.seed + 1) * 0.2);
         this.dummy.scale.set(sc * 0.45, sc * (1.2 + noise1(t * 11 + tg.idx, f.seed) * 0.35), sc * 0.45);
@@ -235,10 +277,15 @@ export class LightManager {
       l.distance = tr.distance;
       l.intensity = tr.intensity * k * k;
     }
+    // shrines rank as if four times closer so a warm key is always there to steer by
     const sorted = this.flames
       .filter((f) => f.level > 0.02)
-      .map((f) => ({ f, d: f.pos.distanceToSquared(camPos) }))
+      .map((f) => ({ f, d: f.pos.distanceToSquared(camPos) * (f.tag === 'shrine' ? 0.0625 : 1) }))
       .sort((a, b) => a.d - b.d);
+    // the first flame that misses out on a light: those just inside the cut fade against it,
+    // so pool hand-offs between flames at similar distance never pop or flicker
+    const cutoff = sorted[this.activeLights - slot];
+    const cutD = cutoff ? Math.sqrt(cutoff.d) : Infinity;
     for (let i = slot; i < this.activeLights; i++) {
       const l = this.pool[i];
       const e = sorted[i - slot];
@@ -255,8 +302,9 @@ export class LightManager {
       l.color.copy(e.f.color);
       l.distance = e.f.distance;
       // fade lights near the pool cut-off distance so swapping is invisible
-      const fade = 1 - Math.max(0, (Math.sqrt(e.d) - 70) / 20);
-      l.intensity = e.f.intensity * 1.8 * e.f.flicker * e.f.level * fade;
+      const dd = Math.sqrt(e.d);
+      const fade = (1 - Math.max(0, (dd - 70) / 20)) * Math.min(1, (cutD - dd) / 5);
+      l.intensity = e.f.intensity * 1.8 * e.f.flicker * e.f.level * Math.max(0, fade);
     }
   }
 
@@ -277,6 +325,11 @@ export class LightManager {
     for (const l of csm.lights) {
       l.intensity = this.moon.intensity;
       l.color.copy(this.moon.color);
+      // each cascade covers a different footprint: scale the bias with its texel size
+      const c = l.shadow.camera;
+      const texel = (c.right - c.left) / l.shadow.mapSize.x;
+      l.shadow.normalBias = texel * 1.6;
+      l.shadow.bias = -0.00008;
     }
     if (camera.fov !== this.lastFov || camera.aspect !== this.lastAspect) {
       this.lastFov = camera.fov;
@@ -315,7 +368,7 @@ export class LightManager {
         maxFar: q.shadowFar,
         mode: 'practical',
         shadowMapSize: q.shadowRes,
-        shadowBias: -0.0004,
+        shadowBias: -0.00008,
         lightDirection: MOON_OFFSET.clone().negate().normalize(),
         lightIntensity: this.moon.intensity,
         lightNear: 1,

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { HUMAN, JOINTS, Rig, SkinBuilder, type Joint, type Proportions, type Vec3T } from './rig';
-import { patchFog } from '../fx/fog';
+import { patchFog, rimPatch } from '../fx/fog';
 
 /**
  * A spawned character model. Entities only talk to this interface, so the
@@ -63,8 +63,10 @@ function charMaterials(opts: { doubleSide?: boolean; roughness?: number; metalRo
       metalness: 0.02,
       side: opts.doubleSide ? THREE.DoubleSide : THREE.FrontSide,
     }),
+    rimPatch,
+    'rim',
   );
-  const metal = patchFog(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: opts.metalRough ?? 0.45, metalness: 0.85 }));
+  const metal = patchFog(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: opts.metalRough ?? 0.45, metalness: 0.85 }), rimPatch, 'rim');
   const glow = patchFog(new THREE.MeshBasicMaterial({ vertexColors: true }));
   return [cloth, metal, glow];
 }

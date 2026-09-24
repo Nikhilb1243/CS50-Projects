@@ -61,3 +61,28 @@ The lighting currently looks bad. Diagnose the causes and fix them properly:
   constructed at load but live out of the scene and physics until near; enemy LOD is animation rate and
   shadows, not simplified meshes (M5 can add mesh LODs); shadow-depth and post shaders compile on the
   first title-screen frame rather than behind the bar.
+
+### Milestone 2: done (2026-09-24)
+Causes found and fixed:
+- **Crushed exposure.** Auto-exposure averaged *linear* luminance (a lantern hotspot dragged the whole
+  frame down) and was clamped to 1.5×, then ACES's toe, a 0.48 desaturation and a 0.66 vignette crushed
+  it further. Now `LogLuminanceMaterial` feeds the mip chain with remapped log2 luminance (geometric
+  mean), exposure is `clamp((0.04 / L)^0.7, 0.6, 4)` × region bias, and the vignette base is 0.52.
+  Measured on the same forest view: mean sRGB luma 15 → 29, crushed pixels (<12) 59 % → 23 %; crypt 37 %,
+  catacombs 32 % (intentionally the darkest). Output colour space stays sRGB with tone mapping only in post.
+- **Swimming/flickering shadows.** The single moon's shadow camera snapped x/z in 4 m world steps but
+  followed `focus.y` continuously. It now snaps to whole shadow texels in light space.
+- **Acne and detached shadows.** A constant `bias -0.0006` (about 11 cm at that depth range) and a fixed
+  normal bias across cascades. Now bias is -0.00008 and `normalBias = 1.6 × texel size`, per CSM cascade.
+- **Light pool popping.** Flames at the pool cut-off now fade against the first excluded flame, and
+  shrines rank as if 4× closer so a warm key light is always present near them.
+- Readability: fresnel rim light on character materials (`rimPatch` in fx/fog.ts, per-region colour and
+  strength); a soft shadowless fill light follows the player; unlit shrines smoulder at 28 % (a warm
+  key with no flame tongues) so they can be found in the dark.
+- Per-region lighting data in `data/lighting.ts` (key, fill sky/ground, fog, grade exposure, saturation,
+  lift, rim, player fill, wetness, env). This replaces `REGION_LOOK` and the layout fog/moon/ambient values
+  for rendering.
+- Before/after: `lighting_before_after.png` in the session scratchpad (not committed).
+- Left for later: point lights still cast no shadows, so a candle can bleed through a thin wall. Fixing that
+  properly needs shadowed point lights or light volumes (costly), so interiors instead rely on no moon and
+  a dim, warm fill. Objective key lights come with Milestone 3's markers.

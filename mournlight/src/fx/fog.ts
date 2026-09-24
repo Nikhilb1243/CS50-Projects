@@ -102,3 +102,28 @@ export function patchFog<T extends THREE.Material>(m: T, extra?: OnBeforeCompile
   if (cacheKey) m.customProgramCacheKey = () => cacheKey;
   return m;
 }
+
+/**
+ * Character rim light: a view-dependent (fresnel) glow added to the emissive term so player and
+ * enemy silhouettes always separate from a dark background. Colour and strength come from the
+ * region's lighting data and are eased by the game.
+ */
+export const rimUniforms = {
+  uRimColor: { value: new THREE.Color(0x9fb4d8) },
+  uRimStrength: { value: 0.2 },
+};
+
+export const rimPatch: OnBeforeCompile = (shader) => {
+  shader.uniforms.uRimColor = rimUniforms.uRimColor;
+  shader.uniforms.uRimStrength = rimUniforms.uRimStrength;
+  shader.fragmentShader = shader.fragmentShader
+    .replace('#include <common>', '#include <common>\nuniform vec3 uRimColor;\nuniform float uRimStrength;')
+    .replace(
+      '#include <emissivemap_fragment>',
+      `#include <emissivemap_fragment>
+  {
+    float rimNdv = saturate(dot(normal, normalize(vViewPosition)));
+    totalEmissiveRadiance += uRimColor * (pow(1.0 - rimNdv, 3.0) * uRimStrength);
+  }`,
+    );
+};

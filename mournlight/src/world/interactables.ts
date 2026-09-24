@@ -75,7 +75,7 @@ export class Shrine implements Interactable {
       builder.cylinder([x + Math.cos(a) * 0.72, y + 0.7, z + Math.sin(a) * 0.72], 0.035, h, 'wax', { col: false, seg: 6 });
     }
     this.flamePos = new THREE.Vector3(x, y + 2.26, z);
-    this.flame = lights.addFlame(this.flamePos, { color: 0xffa050, intensity: 9, distance: 14, lit: false, tongues: tonguesFor('shrine'), tag: 'shrine' });
+    this.flame = lights.addFlame(this.flamePos, { color: 0xffa050, intensity: 9, distance: 14, lit: false, tongues: tonguesFor('shrine'), tag: 'shrine', idle: 0.28 });
   }
 
   kindle(): void {

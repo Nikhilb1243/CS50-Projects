@@ -13,7 +13,8 @@ import { AudioEngine } from './audio/audio';
 import { Ambience } from './audio/ambience';
 import { Particles } from './fx/particles';
 import { PostFX } from './fx/post';
-import { installFogChunks, fogUniforms } from './fx/fog';
+import { installFogChunks, fogUniforms, rimUniforms } from './fx/fog';
+import { regionLighting } from './data/lighting';
 import { HorrorDirector } from './fx/horror';
 import { Sky } from './fx/sky';
 import { GpuParticles } from './fx/gpuparticles';
@@ -48,21 +49,9 @@ type Mode = 'loading' | 'title' | 'playing' | 'paused' | 'menu' | 'dead' | 'cine
 
 /** Where the title screen's camera lingers: the cathedral portal. */
 const TITLE_FOCUS = new THREE.Vector3(0, 14.3, -44);
-const HEMI_SKY = new THREE.Color(0x4f5d74);
 const HEMI_RED = new THREE.Color(0x8a2a1c);
 const MOON_DIR = new THREE.Vector3(0.45, 0.62, -0.64).normalize();
 /** Per-region surface wetness, environment-reflection strength and exposure bias. */
-const REGION_LOOK: Record<string, { wet: number; env: number; exposure: number }> = {
-  catacombs: { wet: 1, env: 0.04, exposure: 0.85 },
-  bellspire: { wet: 0.7, env: 0.5, exposure: 1 },
-  crypt: { wet: 0.55, env: 0.06, exposure: 0.85 },
-  road: { wet: 0.35, env: 0.45, exposure: 1 },
-  village: { wet: 1, env: 0.55, exposure: 1 },
-  forest: { wet: 0.45, env: 0.35, exposure: 0.95 },
-  cathedral: { wet: 0.3, env: 0.3, exposure: 1 },
-  arena: { wet: 0.25, env: 0.35, exposure: 1 },
-};
-const DEFAULT_LOOK = { wet: 0.3, env: 0.35, exposure: 1 };
 /** Title-card subtitles shown the first time a region is entered. */
 const REGION_SUBTITLES: Record<string, string> = {
   crypt: 'where the first wick was lit, and the last was buried',
@@ -125,6 +114,7 @@ export class Game {
   private tmp2 = new THREE.Vector3();
   private fogColor = new THREE.Color(0x0d1013);
   private fogDensity = 0.03;
+  private tmpColor = new THREE.Color();
   private moonK = 1;
   private rotK = 0;
   private hurtK = 0;
@@ -1050,7 +1040,7 @@ export class Game {
     this.audio.setReverb(r.reverb);
     this.audio.setRegionReverb(r.id);
     this.post.setLut(regionLut(r.id));
-    this.world.lights.setRegionLighting(r.moon * (this.world.arenaPhase === 2 && r.id === 'arena' ? 0.2 : 1), r.ambient);
+    this.world.lights.setRegionLighting(regionLighting(r.id), this.world.arenaPhase === 2 && r.id === 'arena' ? 0.2 : 1);
   }
 
   // ---------------------------------------------------------------------------
@@ -1170,7 +1160,14 @@ export class Game {
     this.applyPixelRatio();
     this.renderer.setSize(window.innerWidth, window.innerHeight, false);
     this.renderer.shadowMap.type = q.shadowRadius > 1 ? THREE.PCFShadowMap : THREE.BasicShadowMap;
+    // streamed-out chunks and enemies must receive the material patches too
+    const parked = [...this.world.chunks.parked(), ...this.world.props.streamer.parked(), ...this.enemies.filter((e) => e.streamedOut).map((e) => e.model.root)];
+    const holder = new THREE.Group();
+    for (const o of parked) holder.add(o);
+    this.scene.add(holder);
     this.world.lights.applyQuality(q, this.scene, this.cam.camera);
+    for (const o of parked) o.removeFromParent();
+    this.scene.remove(holder);
     this.player.lantern.setShadow(q.lanternShadow);
     this.scene.environment = q.envMap ? this.envTex : null;
     if (!first) {
@@ -1341,7 +1338,9 @@ export class Game {
       moon: this.moonK,
       camPos,
       moonDir: MOON_DIR,
-      exposureBias: (REGION_LOOK[this.region.id] ?? DEFAULT_LOOK).exposure,
+      exposureBias: regionLighting(this.region.id).grade.exposure,
+      saturation: regionLighting(this.region.id).grade.saturation,
+      lift: regionLighting(this.region.id).grade.lift,
     }, realDt);
     this.renderer.info.reset();
     this.post.render(realDt);
@@ -1350,8 +1349,9 @@ export class Game {
 
   private updateAtmosphere(dt: number): void {
     const r = this.region;
-    let target = new THREE.Color(r.fogColor);
-    let density = r.fogDensity;
+    const L = regionLighting(r.id);
+    let target = new THREE.Color(L.fog.color);
+    let density = L.fog.density;
     if (r.id === 'arena' && this.world.arenaPhase === 2) {
       target = new THREE.Color(0x1a0705);
       density = 0.026;
@@ -1362,14 +1362,16 @@ export class Game {
     this.fogDensity = lerp(this.fogDensity, density, 1 - Math.exp(-1.2 * dt));
     this.fog.color.copy(this.fogColor);
     this.fog.density = this.fogDensity;
-    this.moonK = damp(this.moonK, r.id === 'crypt' ? 0 : r.moon > 0 ? 1 : 0, 1, dt);
+    this.moonK = damp(this.moonK, L.key.intensity > 0 ? 1 : 0, 1, dt);
     // the rotting heart bathes the Godwound in red once the Wick-Mother is unmade
     const red = r.id === 'arena' && this.world.arenaPhase === 2;
-    this.world.lights.hemi.color.lerp(red ? HEMI_RED : HEMI_SKY, 1 - Math.exp(-1.5 * dt));
+    this.world.lights.hemiSkyOverride = red ? HEMI_RED : null;
+    const rk = 1 - Math.exp(-1.2 * dt);
+    rimUniforms.uRimColor.value.lerp(this.tmpColor.setHex(L.rim.color), rk);
+    rimUniforms.uRimStrength.value = damp(rimUniforms.uRimStrength.value, L.rim.strength, 1.2, dt);
     fogUniforms.fogHeightBase.value = damp(fogUniforms.fogHeightBase.value, this.focus.y - 2, 1, dt);
-    const look = REGION_LOOK[r.id] ?? DEFAULT_LOOK;
-    wetUniforms.uWetness.value = damp(wetUniforms.uWetness.value, look.wet, 0.8, dt);
-    this.scene.environmentIntensity = damp(this.scene.environmentIntensity, look.env * (red ? 0.5 : 1), 1, dt);
+    wetUniforms.uWetness.value = damp(wetUniforms.uWetness.value, L.wet, 0.8, dt);
+    this.scene.environmentIntensity = damp(this.scene.environmentIntensity, L.env * (red ? 0.5 : 1), 1, dt);
   }
 
   private ambientParticles(dt: number): void {

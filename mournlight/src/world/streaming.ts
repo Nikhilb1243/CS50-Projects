@@ -31,6 +31,11 @@ export class ChunkStreamer {
     this.items.push({ obj, parent, x, z, r, loaded: obj.parent === parent, freed: false, geos });
   }
 
+  /** Chunks currently out of the scene graph (for one-off material passes that traverse the scene). */
+  parked(): THREE.Object3D[] {
+    return this.items.filter((e) => !e.loaded).map((e) => e.obj);
+  }
+
   get total(): number {
     return this.items.length;
   }
