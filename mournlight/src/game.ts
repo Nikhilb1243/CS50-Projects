@@ -18,6 +18,7 @@ import { HorrorDirector } from './fx/horror';
 import { Sky } from './fx/sky';
 import { GpuParticles } from './fx/gpuparticles';
 import { Abilities } from './combat/abilities';
+import { crawlUniforms } from './ai/dress';
 import { BOW, WEAPONS, WEAPON_ORDER, type WeaponId } from './data/weapons';
 import { buildEnvironment } from './fx/envmap';
 import { regionLut } from './fx/lut';
@@ -1113,6 +1114,7 @@ export class Game {
     this.world.update(realDt, this.time.real, camPos, this.focus, alpha, fogDist);
     this.particles.update(scaledDt);
     this.gpu.update(scaledDt, this.fogDensity);
+    crawlUniforms.uCrawlTime.value = this.time.real;
     this.abilities.render(this.time.real);
     this.ambientParticles(realDt);
     fogUniforms.fogTime.value = this.time.real;

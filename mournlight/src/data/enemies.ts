@@ -1,4 +1,4 @@
-export type EnemyType = 'shambler' | 'stalker' | 'crawler' | 'knight' | 'boss';
+export type EnemyType = 'shambler' | 'stalker' | 'crawler' | 'knight' | 'boss' | 'mimic' | 'screamer' | 'moths';
 
 export interface AttackChoice {
   id: string;
@@ -71,6 +71,42 @@ export const ENEMIES: Record<EnemyType, EnemyDef> = {
     attackCooldown: [0.5, 1.4], marrow: 70, staggerTime: 0.8, parriedTime: 1.6,
     canBackstab: true, canRiposte: true, leash: 60,
     breath: 'breath_thin', voice: 'stalker_creak', step: 'step_light', armor: 1, hitSound: 'hit_flesh',
+  },
+  // Corpse-mimic: lies among the dead, rises when you step close.
+  mimic: {
+    type: 'mimic', name: 'Corpse-Mimic', model: 'shambler', style: 'shambler',
+    health: 170, poise: 30, poiseRegen: 14, radius: 0.4, height: 1.8, scale: 1.0,
+    walkSpeed: 1.4, runSpeed: 4.6, turnSpeed: 5,
+    sightRange: 14, sightFov: 140, hearing: 0.6, lanternAttract: 0,
+    attacks: [
+      { id: 'sh_swipe', min: 0, max: 2.3, weight: 3 },
+      { id: 'sh_grab', min: 0.4, max: 2.8, weight: 2, cooldown: 5 },
+    ],
+    attackCooldown: [0.4, 1.2], marrow: 80, staggerTime: 0.9, parriedTime: 1.6,
+    canBackstab: true, canRiposte: true, leash: 30,
+    breath: 'breath_wet', voice: 'mimic_crack', step: 'step_drag', armor: 1, hitSound: 'hit_flesh',
+  },
+  // Screamer: keeps its distance and wails; everything nearby answers.
+  screamer: {
+    type: 'screamer', name: 'Screamer', model: 'stalker', style: 'stalker',
+    health: 110, poise: 15, poiseRegen: 20, radius: 0.32, height: 2.2, scale: 0.92,
+    walkSpeed: 1.6, runSpeed: 4.2, turnSpeed: 6,
+    sightRange: 26, sightFov: 150, hearing: 1.4, lanternAttract: 30,
+    attacks: [{ id: 'st_rake', min: 0, max: 2.2, weight: 3 }],
+    attackCooldown: [0.8, 1.8], marrow: 90, staggerTime: 1.2, parriedTime: 1.8,
+    canBackstab: true, canRiposte: true, leash: 50,
+    breath: 'breath_thin', voice: 'screamer_wail', step: 'step_light', armor: 1, hitSound: 'hit_flesh',
+  },
+  // Moth swarm: drawn to the lantern, smothers its flame.
+  moths: {
+    type: 'moths', name: 'Ashwing Swarm', model: 'crawler', style: 'stalker',
+    health: 70, poise: 999, poiseRegen: 0, radius: 0.6, height: 1.6, scale: 0.4,
+    walkSpeed: 2.5, runSpeed: 4.8, turnSpeed: 8,
+    sightRange: 10, sightFov: 360, hearing: 0.4, lanternAttract: 42,
+    attacks: [],
+    attackCooldown: [1, 2], marrow: 40, staggerTime: 0, parriedTime: 0,
+    canBackstab: false, canRiposte: false, leash: 70,
+    breath: 'moth_flutter', voice: 'moth_flutter', step: 'moth_flutter', armor: 1, hitSound: 'hit_flesh',
   },
   crawler: {
     type: 'crawler', name: 'Crawler', model: 'crawler', style: 'stalker',

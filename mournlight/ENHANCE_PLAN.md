@@ -92,3 +92,10 @@ pmndrs postprocessing + Web Audio), everything original (names, lore, enemies, d
 - Journal (J) and map (M) screens in `ui/menus.ts`; `ui/map.ts` fog-of-war map (4 m cells revealed around the player, region tints, shrines, boss, objectives, notes, player arrow). Explored mask, notes and visited regions are saved.
 - Diegetic guidance: the lantern flame leans toward the main objective (`Lantern.lean`), faint blue wisps appear along the ground in that direction (skipped during boss fights).
 - Left for M5: "beating a boss unlocks the next region" (the new regions don't exist yet). Wisps follow the straight-line direction, not a navmesh path.
+
+### Milestone 4: done, reduced scope (session 1)
+- `ai/dress.ts`: `CreatureDress` for shambler, stalker, crawler, knight and the new types: blooming eye halos (brighter when hunting), periodic drips (GPU particles), and a "crawling skin" shader patch (sub-surface swelling in the vertex shader + pulsing dark veins), chained onto the existing material patches.
+- `ai/enemy.ts`: stop-motion pose holding for stalkers (3 steps), crawlers (2) and screamers (4); unsettling idle head-snaps and crooked leans; `summon()` for screams.
+- New creatures in `ai/creatures.ts` + `data/enemies.ts` + spawns in layout: **Corpse-Mimic** (lies as a corpse, fingers twitch in lantern light, rises with cracking joints when you come within 3 m), **Screamer** (keeps its distance, wails and summons every creature within 38 m, 14 s cooldown), **Ashwing Swarm** (instanced moths drawn to a lit lantern that smother it and drain fuel; shutter the lantern and they lose interest; hits scatter them).
+- New procedural sounds: `screamer_wail`, `mimic_crack`, `moth_flutter`.
+- Not done (left for a later pass): procedural IK legs for crawlers, full per-enemy geometry rebuilds, new bespoke death animations (existing death poses are used), distinct footstep/breath sets for the original four (they already had per-type breath/voice/step sounds).

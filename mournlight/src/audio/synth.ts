@@ -406,6 +406,42 @@ export const SOUNDS: Record<string, SoundDef> = {
       }
     },
   },
+  // A drawn-out, many-throated wail that rises and breaks.
+  screamer_wail: {
+    dur: 2.2, peak: 0.85,
+    gen: (d, sr, r) => {
+      for (const [f, det] of [[520, 1], [610, 1.013], [760, 0.987]] as [number, number][]) {
+        let ph = 0;
+        for (let i = 0; i < d.length; i++) {
+          const t = i / sr;
+          const f0 = (f + t * 260 + Math.sin(t * 38 * det) * 22 + (t > 1.5 ? (t - 1.5) * 900 : 0)) * det;
+          ph += f0 / sr;
+          d[i] += tanh(Math.sin(2 * Math.PI * ph) * 3) * ar(t, 0.25, 0.9) * 0.28;
+        }
+      }
+      noiseBurst(d, sr, r, 'bp', 2600, 1.5, (t) => ar(t, 0.2, 1.2), 0.5);
+    },
+  },
+  // Joints snapping back into place as a corpse stands.
+  mimic_crack: {
+    dur: 1.0, variants: 2, peak: 0.8,
+    gen: (d, sr, r) => {
+      for (let k = 0; k < 9; k++) noiseBurst(d, sr, r, 'bp', 900 + Math.abs(r()) * 1500, 3, (t) => ar(t, 0.0005, 0.02), 1, Math.abs(r()) * 0.85);
+      formantVoice(d, sr, r, (t) => 70 + t * 30, [[500, 4], [900, 5]], (t) => ar(t, 0.2, 0.6), 0.8, 2.5);
+    },
+  },
+  // Dry, papery wingbeats (looped for the swarm).
+  moth_flutter: {
+    dur: 1.2, loop: true, peak: 0.45,
+    gen: (d, sr, r) => {
+      const flt = new Biquad('bp', sr, 1400, 1.2);
+      for (let i = 0; i < d.length; i++) {
+        const t = i / sr;
+        const am = 0.4 + 0.6 * Math.abs(Math.sin(t * 2 * Math.PI * 34 + Math.sin(t * 7) * 2));
+        d[i] += flt.p(r()) * am * 0.8;
+      }
+    },
+  },
   stalker_shriek: {
     dur: 1.0, peak: 0.7,
     gen: (d, sr, r) => {

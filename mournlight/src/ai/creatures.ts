@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Enemy } from './enemy';
 import type { GameContext } from '../core/context';
 import type { EnemySpawn } from '../world/layout';
-import { KEY_POSES } from '../entities/poses';
+import { KEY_POSES, STANCE_POSE, deathPose } from '../entities/poses';
 import { addJoint, blendPose, OFF, type Pose } from '../entities/rig';
 import { clamp, clamp01, easeIn, noise1, yawTo } from '../core/math';
 import type { HitInfo, HitResult, Hurtbox } from '../combat/combat';
@@ -273,6 +273,237 @@ export class Crawler extends Enemy {
   }
 }
 
+/**
+ * Corpse-Mimic: lies among the dead, indistinguishable from them, until the
+ * Revenant steps close. Then it rises all at once, joints cracking back into
+ * place, and lunges. Lantern light on it for a while gives it away: it twitches.
+ */
+export class Mimic extends Enemy {
+  private riseT = -1;
+
+  constructor(ctx: GameContext, spawn: EnemySpawn) {
+    super(ctx, spawn);
+    this.state = 'dormant';
+  }
+
+  protected perceive(dt: number, d: number): void {
+    if (this.state === 'dormant' || this.riseT >= 0) return;
+    super.perceive(dt, d);
+  }
+
+  protected think(dt: number, d: number): void {
+    if (this.state === 'dormant') {
+      this.locomote(dt, null, 0);
+      if (d < 3.1 && this.alive) {
+        this.riseT = 0;
+        this.setState('intro', 0.55);
+        this.voice.playOnce('mimic_crack', 1);
+        this.ctx.ambience.stinger();
+        this.ctx.shake(0.2);
+      }
+      return;
+    }
+    if (this.riseT >= 0) {
+      this.riseT += dt;
+      this.locomote(dt, null, 0, undefined, this.player.pos);
+      if (this.riseT > 0.55) {
+        this.riseT = -1;
+        this.alert();
+        this.attackTimer = 0;
+      }
+      return;
+    }
+    super.think(dt, d);
+  }
+
+  protected animate(dt: number): void {
+    if (this.state === 'dormant' || this.riseT >= 0) {
+      const p = this.pose;
+      const lying = deathPose(p, 1);
+      if (this.riseT >= 0) blendPose(p, lying, STANCE_POSE, clamp01(this.riseT / 0.45) ** 0.5);
+      // a lantern held on it makes the fingers twitch
+      if (this.state === 'dormant' && this.player.lantern.lit && this.pos.distanceTo(this.player.pos) < 7) for (let i = 0; i < p.length - 3; i += 9) p[i] += noise1(this.t * 14 + i, i) * 0.06;
+      this.anim.update(dt, 0, 0);
+      this.anim.action.set(p);
+      this.anim.setAction(true, undefined, 60, 60);
+      this.anim.apply();
+      this.render(1);
+      return;
+    }
+    super.animate(dt);
+  }
+
+  canBackstab(): boolean {
+    return this.state !== 'dormant' && super.canBackstab();
+  }
+
+  reset(): void {
+    super.reset();
+    this.riseT = -1;
+    this.state = 'dormant';
+  }
+}
+
+/**
+ * Screamer: a gaunt thing that will not fight fair. When it sees the
+ * Revenant it keeps its distance and wails, and every creature within
+ * earshot comes running. Kill it first.
+ */
+export class Screamer extends Enemy {
+  private screamCd = 0;
+  private screaming = 0;
+
+  protected think(dt: number, d: number): void {
+    this.screamCd -= dt;
+    if (this.screaming > 0) {
+      this.screaming -= dt;
+      this.locomote(dt, null, 0, undefined, this.player.pos);
+      return;
+    }
+    if (this.state === 'chase' && this.canSee && this.screamCd <= 0 && d < 24) {
+      this.scream();
+      return;
+    }
+    // keep away unless cornered
+    if (this.state === 'chase' && d < 6 && d > 2.4) {
+      const away = this.tmp.subVectors(this.pos, this.player.pos).setY(0).normalize().multiplyScalar(4).add(this.pos);
+      this.locomote(dt, away, this.def.runSpeed, undefined, this.player.pos);
+      return;
+    }
+    super.think(dt, d);
+  }
+
+  private scream(): void {
+    this.screaming = 2.1;
+    this.screamCd = 14;
+    this.voice.playOnce('screamer_wail', 1.2);
+    this.ctx.shake(0.25);
+    this.ctx.message('A scream answers the dark...', 2);
+    for (const e of this.ctx.enemies) if (e !== this && e.pos.distanceTo(this.pos) < 38) e.summon(this.player.pos);
+    this.ctx.gpu.emit(this.ctx.gpu.haze, { pos: this.center(new THREE.Vector3()), count: 14, speed: [1, 3], life: [0.8, 1.4], size: [0.6, 1.2], grow: 2, color: 0x9098a8, alpha: 0.08 });
+  }
+
+  protected animate(dt: number): void {
+    super.animate(dt);
+    if (this.screaming > 0) {
+      const r = this.model.rig;
+      r.bone('head').rotation.x -= 0.7 + noise1(this.t * 30, 2) * 0.1;
+      r.bone('chest').rotation.x -= 0.25;
+      r.bone('upperArmL').rotation.z += 0.9;
+      r.bone('upperArmR').rotation.z -= 0.9;
+    }
+  }
+
+  reset(): void {
+    super.reset();
+    this.screaming = 0;
+    this.screamCd = 0;
+  }
+}
+
+/**
+ * Ashwing Swarm: a cloud of pale moths drawn to the lantern. They crowd the
+ * glass and smother the flame (fuel drains fast while they cling). Shutter
+ * the lantern and they lose interest; strike them and they scatter.
+ */
+export class MothSwarm extends Enemy {
+  private swarm: THREE.InstancedMesh;
+  private seeds: Float32Array;
+  private dummy = new THREE.Object3D();
+  private center3 = new THREE.Vector3();
+  private smother = 0;
+  private scatter = 0;
+  static readonly N = 48;
+
+  constructor(ctx: GameContext, spawn: EnemySpawn) {
+    super(ctx, spawn);
+    const wing = new THREE.BufferGeometry();
+    wing.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, -0.06, 0.01, 0.04, -0.05, 0, -0.04, 0, 0, 0, 0.06, 0.01, 0.04, 0.05, 0, -0.04], 3));
+    wing.computeVertexNormals();
+    const mat = new THREE.MeshBasicMaterial({ color: 0xb8b0a0, side: THREE.DoubleSide, transparent: true, opacity: 0.85 });
+    this.swarm = new THREE.InstancedMesh(wing, mat, MothSwarm.N);
+    this.swarm.frustumCulled = false;
+    ctx.scene.add(this.swarm);
+    this.seeds = new Float32Array(MothSwarm.N * 3).map(() => Math.random() * 100);
+    this.model.root.visible = false;
+  }
+
+  protected perceive(dt: number, d: number): void {
+    const p = this.player;
+    // moths do not look, they feel the flame's warmth through the fog
+    if (p.lantern.lit && d < this.def.lanternAttract * 0.5 && p.alive && this.grace <= 0) {
+      this.awareness = 1.2;
+      this.lastKnown.copy(p.pos);
+      if (this.state !== 'chase') this.alert();
+      return;
+    }
+    super.perceive(dt, d);
+  }
+
+  protected think(dt: number, d: number): void {
+    const p = this.player;
+    // no lantern, no interest
+    if (!p.lantern.lit && this.state === 'chase') {
+      this.awareness = Math.max(0, this.awareness - dt * 0.8);
+      if (this.awareness <= 0.05) this.setState('return');
+    }
+    super.think(dt, d);
+    this.scatter = Math.max(0, this.scatter - dt);
+    const lp = p.lantern.worldPos(this.tmp2);
+    const near = this.alive && p.lantern.lit && this.center3.distanceTo(lp) < 1.6 && this.scatter <= 0;
+    this.smother = near ? Math.min(1, this.smother + dt * 2) : Math.max(0, this.smother - dt * 1.5);
+    if (this.smother > 0.5) {
+      p.lantern.fuel = Math.max(0, p.lantern.fuel - dt * 9);
+      if (Math.random() < dt * 0.6) this.ctx.message('Moths smother your lantern. Shutter it, or strike them off.', 2.5);
+    }
+  }
+
+  protected minRange(): number {
+    return 0.7;
+  }
+
+  receiveHit(h: HitInfo): HitResult {
+    const r = super.receiveHit(h);
+    this.scatter = 1.2;
+    return r;
+  }
+
+  protected bleed(point: THREE.Vector3): void {
+    this.ctx.gpu.emit(this.ctx.gpu.alpha, { pos: point, count: 18, speed: [0.5, 2], life: [0.6, 1.2], size: [0.03, 0.06], color: 0xc8c0b0, alpha: 0.8, gravity: 2, drag: 1 });
+  }
+
+  render(alpha: number): void {
+    super.render(alpha);
+    this.model.root.visible = false;
+    const t = this.t;
+    const lp = this.player.lantern.worldPos(this.tmp);
+    const base = this.model.root.position;
+    this.center3.set(base.x, base.y + 1.2, base.z).lerp(lp, this.state === 'chase' ? clamp01(1.5 - this.pos.distanceTo(this.player.pos) / 3) * 0.85 : 0);
+    const alive = this.alive || this.deadTime < 3;
+    for (let i = 0; i < MothSwarm.N; i++) {
+      const s = this.seeds[i * 3];
+      const s2 = this.seeds[i * 3 + 1];
+      const spread = (this.alive ? 0.35 + this.scatter * 1.6 + (1 - this.smother) * 0.4 : 0.3 + this.deadTime * 1.5);
+      const ang = t * (1.5 + (s % 1.3)) + s;
+      const x = Math.cos(ang) * spread * (0.4 + (s2 % 1)) + noise1(t * 3 + s, s2) * 0.25;
+      const y = Math.sin(t * (2 + (s2 % 1.1)) + s2) * spread * 0.6 - (this.alive ? 0 : this.deadTime * this.deadTime * 0.8);
+      const z = Math.sin(ang) * spread * (0.4 + (s % 1)) + noise1(t * 3 + s2, s) * 0.25;
+      this.dummy.position.set(this.center3.x + x, this.center3.y + y, this.center3.z + z);
+      this.dummy.rotation.set(Math.sin(t * 40 + s) * 0.9, ang, 0);
+      this.dummy.scale.setScalar(alive ? 1 : 0.001);
+      this.dummy.updateMatrix();
+      this.swarm.setMatrixAt(i, this.dummy.matrix);
+    }
+    this.swarm.instanceMatrix.needsUpdate = true;
+    this.swarm.visible = alive && this.pos.distanceTo(this.player.pos) < 90;
+  }
+
+  reset(): void {
+    super.reset();
+    this.smother = 0;
+  }
+}
+
 export function createEnemy(ctx: GameContext, spawn: EnemySpawn): Enemy {
   switch (spawn.type) {
     case 'shambler':
@@ -285,5 +516,11 @@ export function createEnemy(ctx: GameContext, spawn: EnemySpawn): Enemy {
       return new DrownedKnight(ctx, spawn);
     case 'boss':
       return new Boss(ctx, spawn);
+    case 'mimic':
+      return new Mimic(ctx, spawn);
+    case 'screamer':
+      return new Screamer(ctx, spawn);
+    case 'moths':
+      return new MothSwarm(ctx, spawn);
   }
 }

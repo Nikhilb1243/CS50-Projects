@@ -13,6 +13,7 @@ import { facing } from '../combat/combat';
 import type { EnemySpawn } from '../world/layout';
 import type { EntityVoice } from '../audio/audio';
 import type { Player } from '../entities/player';
+import { CreatureDress, DRESS } from './dress';
 import { events } from '../core/events';
 
 export type EState =
@@ -93,6 +94,10 @@ export class Enemy extends Actor {
   removed = false;
   /** Seconds after a reset during which the creature does not perceive. */
   protected grace = 0;
+  protected dress: CreatureDress | null = null;
+  /** Hold poses for N simulation steps: twitchy, stop-motion movement. */
+  protected stopMotion = 0;
+  private smCount = 0;
 
   constructor(ctx: GameContext, spawn: EnemySpawn, opts: { phantom?: boolean; def?: EnemyDef } = {}) {
     const def = opts.def ?? ENEMIES[spawn.type];
@@ -117,6 +122,8 @@ export class Enemy extends Actor {
       this.anim.carryMask = ARMS_MASK;
     }
     this.state = spawn.patrol ? 'patrol' : 'idle';
+    if (!phantom && DRESS[def.type]) this.dress = new CreatureDress(ctx, this.model, DRESS[def.type]);
+    this.stopMotion = def.type === 'stalker' ? 3 : def.type === 'crawler' ? 2 : def.type === 'screamer' ? 4 : 0;
     if (phantom) {
       this.model.setOpacity(0.0);
       this.state = 'chase';
@@ -872,9 +879,30 @@ export class Enemy extends Actor {
       addJoint(this.anim.base, 'spine', -f, 0, f * 0.3);
       addJoint(this.anim.base, 'head', -f, 0, 0);
     }
+    // unsettling idles: sudden head snaps and a crooked lean
+    if ((this.state === 'idle' || this.state === 'patrol') && this.alive) {
+      const snap = Math.max(0, noise1(this.t * 0.9, this.home.x) - 0.55) * 3;
+      addJoint(this.anim.base, 'head', 0, snap * 0.6 * Math.sign(noise1(this.t * 0.2, 3)), snap * 0.5);
+      addJoint(this.anim.base, 'spine', 0, 0, noise1(this.t * 0.3, this.home.z) * 0.12);
+    }
     this.anim.action.set(p);
-    this.anim.apply();
+    this.smCount++;
+    const hold = this.stopMotion > 0 && this.state !== 'dead' && this.state !== 'attack' && this.smCount % this.stopMotion !== 0;
+    if (!hold) this.anim.apply();
     this.model.flash(this.hurtFlash);
+  }
+
+  override render(alpha: number): void {
+    super.render(alpha);
+    this.dress?.update(1 / 60, this.t, this.alive, this.state === 'chase' || this.state === 'attack', this.model.root.visible);
+  }
+
+  /** Called by a Screamer's wail: come running. */
+  summon(to: THREE.Vector3): void {
+    if (!this.alive || this.phantom || this.state === 'dead' || this.state === 'dormant' || this.state === 'cling') return;
+    this.awareness = 1.3;
+    this.lastKnown.copy(to);
+    if (this.state !== 'attack' && this.state !== 'chase') this.alert();
   }
 
   protected deadPose(p: Pose): void {

@@ -475,13 +475,17 @@ export const DOORS: DoorDef[] = [
 
 export const ENEMIES_LAYOUT: EnemySpawn[] = [
   // Ossuary
+  { type: 'mimic', p: [-6, CY, 120], yaw: 0.4 },
   { type: 'shambler', p: [0, CY, 108], yaw: Math.PI, patrol: [[-6, CY, 108], [6, CY, 112]] },
   { type: 'crawler', p: [15, CY + 3.3, 107], cling: 'ceiling' },
   // Barrow Road
+  { type: 'moths', p: [10, 0.6, 40] },
   { type: 'shambler', p: [-8, 0.6, 30], patrol: [[-8, 0.6, 30], [4, 0.6, 22], [-14, 0.6, 6]] },
   { type: 'shambler', p: [22, 0.6, 0], yaw: 2 },
   { type: 'stalker', p: [24, 0.6, -24] },
   // Brinemoor
+  { type: 'screamer', p: [-104, 0.4, 14] },
+  { type: 'mimic', p: [-90, 0.45, 40], yaw: 2 },
   { type: 'shambler', p: [-84, 0.4, 27] },
   { type: 'shambler', p: [-96, -1.5, 29], patrol: [[-96, -1.5, 29], [-104, -1.5, 36]] },
   { type: 'shambler', p: [-108, 0.4, 22] },
@@ -493,6 +497,9 @@ export const ENEMIES_LAYOUT: EnemySpawn[] = [
   { type: 'knight', p: [-119, 0.4, 57], yaw: 3 },
   { type: 'shambler', p: [-64, 7.5, -40] },
   // Gallowwood
+  { type: 'moths', p: [112, 1, 30] },
+  { type: 'screamer', p: [130, 1, 70] },
+  { type: 'moths', p: [146, -3, 112] },
   { type: 'stalker', p: [90, 1, 18] },
   { type: 'stalker', p: [122, 1, 62] },
   { type: 'stalker', p: [142, -3, 108] },
@@ -502,6 +509,7 @@ export const ENEMIES_LAYOUT: EnemySpawn[] = [
   { type: 'crawler', p: [96, 14 + 6.6, -98], cling: 'ceiling' },
   { type: 'knight', p: [78, 14, -80], yaw: -1.6 },
   // Cathedral
+  { type: 'mimic', p: [-4, 14.3, -80], yaw: 1 },
   { type: 'knight', p: [0, K, -86], yaw: 0 },
   { type: 'knight', p: [5, K + 0.8, -112], yaw: 0.3 },
   { type: 'crawler', p: [-17.5, K + 6.45, -90], cling: 'ceiling' },
