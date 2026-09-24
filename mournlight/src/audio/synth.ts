@@ -442,6 +442,56 @@ export const SOUNDS: Record<string, SoundDef> = {
       }
     },
   },
+  // --- weapons and impacts
+  hit_stone: {
+    dur: 0.35, variants: 3, peak: 0.8,
+    gen: (d, sr, r) => {
+      noiseBurst(d, sr, r, 'bp', 2600 + r() * 600, 2, (t) => ar(t, 0.0005, 0.05), 1);
+      metal(d, sr, [1900 + r() * 200, 3100, 4700], [0.03, 0.02, 0.012], 0.25);
+      thump(d, sr, 180, 90, 0.04, 0.6);
+    },
+  },
+  bow_creak: {
+    dur: 0.7, variants: 2, peak: 0.45,
+    gen: (d, sr, r) => {
+      const flt = new Biquad('bp', sr, 420 + Math.abs(r()) * 120, 12);
+      let next = 0;
+      for (let i = 0; i < d.length; i++) {
+        const t = i / sr;
+        let x = 0;
+        if (t >= next) {
+          x = 1;
+          next = t + 0.012 + Math.abs(r()) * 0.01;
+        }
+        d[i] += flt.p(x) * bell(t, 0.7);
+      }
+    },
+  },
+  bow_twang: {
+    dur: 0.6, variants: 2, peak: 0.8,
+    gen: (d, sr, r) => {
+      let ph = 0;
+      const f0 = 150 + r() * 10;
+      for (let i = 0; i < d.length; i++) {
+        const t = i / sr;
+        ph += (f0 * (1 + 0.4 * Math.exp(-t * 40))) / sr;
+        d[i] += (Math.sin(2 * Math.PI * ph) + 0.4 * Math.sin(4 * Math.PI * ph)) * Math.exp(-t * 9) * 0.6;
+      }
+      noiseBurst(d, sr, r, 'hp', 3000, 0.7, (t) => ar(t, 0.0005, 0.015), 0.6);
+    },
+  },
+  arrow_whistle: {
+    dur: 0.9, peak: 0.5,
+    gen: (d, sr, r) => noiseBurst(d, sr, r, 'bp', 2400, 9, (t) => ar(t, 0.02, 0.6), 1, 0, (t) => 2800 - t * 1400),
+  },
+  blue_roar: {
+    dur: 1.6, variants: 2, peak: 0.85,
+    gen: (d, sr, r) => {
+      noiseBurst(d, sr, r, 'lp', 900, 0.8, (t) => ar(t, 0.06, 1.2), 1, 0, (t) => 400 + t * 1600);
+      noiseBurst(d, sr, r, 'bp', 3200, 1.2, (t) => ar(t, 0.02, 0.5) * (0.6 + 0.4 * Math.sin(t * 70)), 0.4);
+      thump(d, sr, 70, 40, 0.5, 0.7);
+    },
+  },
   stalker_shriek: {
     dur: 1.0, peak: 0.7,
     gen: (d, sr, r) => {
@@ -896,7 +946,8 @@ export async function generateSounds(ctx: BaseAudioContext, onProgress?: (p: num
 }
 
 /** Stereo impulse response for the convolution reverb. */
-export function makeImpulse(ctx: BaseAudioContext, seconds: number, decay: number): AudioBuffer {
+/** Generated room response: `bright` sets the starting cutoff, `early` adds discrete early reflections (stone halls). */
+export function makeImpulse(ctx: BaseAudioContext, seconds: number, decay: number, bright = 5000, early = 0): AudioBuffer {
   const sr = ctx.sampleRate;
   const len = Math.floor(seconds * sr);
   const buf = ctx.createBuffer(2, len, sr);
@@ -906,8 +957,9 @@ export function makeImpulse(ctx: BaseAudioContext, seconds: number, decay: numbe
     const lp = new Biquad('lp', sr, 5000, 0.7);
     for (let i = 0; i < len; i++) {
       const t = i / sr;
-      if (i % 256 === 0) lp.set(5000 * Math.exp(-t * 1.2) + 400, 0.7);
+      if (i % 256 === 0) lp.set(bright * Math.exp(-t * 1.2) + 400, 0.7);
       d[i] = lp.p(r()) * Math.pow(1 - t / seconds, decay) * (t < 0.01 ? t / 0.01 : 1);
+      if (early > 0) for (const e of [0.013, 0.029, 0.041, 0.067, 0.089]) if (Math.abs(t - e * (1 + c * 0.07)) < 0.0007) d[i] += early * (1 - e * 5);
     }
   }
   return buf;

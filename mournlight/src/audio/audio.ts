@@ -29,10 +29,20 @@ export class AudioEngine {
   readonly sfx: GainNode;
   readonly amb: GainNode;
   private reverb: ConvolverNode;
+  private reverbB: ConvolverNode;
+  private revA: GainNode;
+  private revB: GainNode;
+  private revUseB = false;
+  private irs = new Map<string, AudioBuffer>();
+  private irName = '';
+  /** Set by the game: true if something solid lies between the listener and `pos`. */
+  occluded: ((pos: THREE.Vector3) => boolean) | null = null;
+  private voices: { obj: THREE.Object3D; audio: THREE.PositionalAudio; filter: BiquadFilterNode }[] = [];
+  private occT = 0;
   private reverbSend: GainNode;
   private reverbAmb: GainNode;
   private buffers = new Map<string, AudioBuffer[]>();
-  private pool: { obj: THREE.Object3D; audio: THREE.PositionalAudio; busyUntil: number }[] = [];
+  private pool: { obj: THREE.Object3D; audio: THREE.PositionalAudio; busyUntil: number; filter: BiquadFilterNode }[] = [];
   private flat: THREE.Audio[] = [];
   private flatIdx = 0;
   ready = false;
@@ -48,6 +58,11 @@ export class AudioEngine {
     this.reverbSend = this.ctx.createGain();
     this.reverbAmb = this.ctx.createGain();
     this.reverb.buffer = makeImpulse(this.ctx, 3.2, 2.6);
+    this.reverbB = this.ctx.createConvolver();
+    this.reverbB.buffer = this.reverb.buffer;
+    this.revA = this.ctx.createGain();
+    this.revB = this.ctx.createGain();
+    this.revB.gain.value = 0;
 
     // Re-route the listener's output through our buses
     const lg = this.listener.getInput();
@@ -56,10 +71,15 @@ export class AudioEngine {
     this.sfx.connect(this.master);
     this.sfx.connect(this.reverbSend);
     this.reverbSend.connect(this.reverb);
+    this.reverbSend.connect(this.reverbB);
     this.amb.connect(this.master);
     this.amb.connect(this.reverbAmb);
     this.reverbAmb.connect(this.reverb);
-    this.reverb.connect(this.master);
+    this.reverbAmb.connect(this.reverbB);
+    this.reverb.connect(this.revA);
+    this.reverbB.connect(this.revB);
+    this.revA.connect(this.master);
+    this.revB.connect(this.master);
     // gentle limiter so stacked hits never clip
     const comp = this.ctx.createDynamicsCompressor();
     comp.threshold.value = -10;
@@ -88,9 +108,13 @@ export class AudioEngine {
       const obj = new THREE.Object3D();
       const audio = new THREE.PositionalAudio(this.listener);
       audio.setDistanceModel('inverse');
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 20000;
+      audio.setFilter(filter);
       obj.add(audio);
       scene.add(obj);
-      this.pool.push({ obj, audio, busyUntil: 0 });
+      this.pool.push({ obj, audio, busyUntil: 0, filter });
     }
     for (let i = 0; i < 10; i++) this.flat.push(new THREE.Audio(this.listener));
     this.ready = true;
@@ -115,6 +139,52 @@ export class AudioEngine {
     this.reverbSend.gain.setTargetAtTime(clamp(wet, 0, 1) * 0.6, t, 0.8);
     this.reverbAmb.gain.setTargetAtTime(clamp(wet, 0, 1) * 0.35, t, 0.8);
   }
+
+  /**
+   * Swap to a region's generated impulse response (cross-faded between two
+   * convolvers). Each IR is built once: length, decay, brightness and early
+   * reflections describe the space.
+   */
+  setRegionReverb(id: string): void {
+    if (id === this.irName) return;
+    this.irName = id;
+    const P: Record<string, [number, number, number, number]> = {
+      crypt: [3.4, 2.2, 3800, 0.5],
+      catacombs: [5.2, 1.8, 2600, 0.6],
+      cathedral: [4.6, 2.0, 5200, 0.35],
+      bellspire: [2.6, 3, 6000, 0.25],
+      village: [1.6, 3.5, 4200, 0],
+      forest: [1.3, 4, 3500, 0],
+      road: [1.2, 4, 4500, 0],
+      arena: [2.8, 2.6, 4000, 0.2],
+    };
+    let ir = this.irs.get(id);
+    if (!ir) {
+      const [len, dec, br, er] = P[id] ?? [2.4, 2.8, 4500, 0];
+      ir = makeImpulse(this.ctx, len, dec, br, er);
+      this.irs.set(id, ir);
+    }
+    const t = this.ctx.currentTime;
+    this.revUseB = !this.revUseB;
+    (this.revUseB ? this.reverbB : this.reverb).buffer = ir;
+    this.revA.gain.setTargetAtTime(this.revUseB ? 0 : 1, t, 0.6);
+    this.revB.gain.setTargetAtTime(this.revUseB ? 1 : 0, t, 0.6);
+  }
+
+  /** Re-check occlusion of attached voices (a few times a second). */
+  updateOcclusion(dt: number): void {
+    this.occT -= dt;
+    if (this.occT > 0 || !this.occluded) return;
+    this.occT = 0.25;
+    const t = this.ctx.currentTime;
+    for (const v of this.voices) {
+      if (!v.audio.isPlaying) continue;
+      v.obj.getWorldPosition(this.tmpV);
+      const occ = this.occluded(this.tmpV);
+      v.filter.frequency.setTargetAtTime(occ ? 650 : 20000, t, 0.15);
+    }
+  }
+  private tmpV = new THREE.Vector3();
 
   /** Non-positional one-shot (UI, player body sounds). */
   play(name: string, opts: PlayOpts = {}): void {
@@ -142,11 +212,14 @@ export class AudioEngine {
     if (a.isPlaying) a.stop();
     slot.obj.position.copy(pos);
     slot.obj.updateMatrixWorld();
+    // muffle sounds behind walls
+    const occ = this.occluded ? this.occluded(pos) : false;
+    slot.filter.frequency.setValueAtTime(occ ? 650 : 20000, now);
     a.setBuffer(buf);
     a.setRefDistance(opts.ref ?? 3);
     a.setMaxDistance(opts.max ?? 60);
     a.setRolloffFactor(opts.rolloff ?? 1.2);
-    a.setVolume(opts.volume ?? 1);
+    a.setVolume((opts.volume ?? 1) * (occ ? 0.6 : 1));
     const rate = (opts.rate ?? 1) * (1 + (Math.random() * 2 - 1) * (opts.vary ?? 0.06));
     a.setPlaybackRate(rate);
     a.play();
@@ -162,7 +235,12 @@ export class AudioEngine {
     a.setRefDistance(ref);
     a.setRolloffFactor(rolloff);
     a.setDistanceModel('inverse');
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 20000;
+    a.setFilter(filter);
     obj.add(a);
+    this.voices.push({ obj, audio: a, filter });
     return new EntityVoice(this, a);
   }
 }

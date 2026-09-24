@@ -122,6 +122,7 @@ export class Game {
   private cinematicT = 0;
   private prompt: { target: Interactable; text: string } | null = null;
   private tmp = new THREE.Vector3();
+  private tmp2 = new THREE.Vector3();
   private fogColor = new THREE.Color(0x0d1013);
   private fogDensity = 0.03;
   private moonK = 1;
@@ -251,6 +252,10 @@ export class Game {
       message: (t, d) => self.hud.message(t, d),
     };
     this.hazards = new HazardSystem(this.ctx);
+    this.audio.occluded = (pos) => {
+      const cp = this.cam.camera.position;
+      return pos.distanceToSquared(cp) > 4 && !this.physics.lineOfSight(cp, this.tmp2.copy(pos).setY(pos.y + 0.3));
+    };
     this.abilities = new Abilities(this.ctx);
     this.ctx.abilities = this.abilities;
     this.ctx.hazards = this.hazards;
@@ -999,6 +1004,7 @@ export class Game {
     }
     this.ambience.setRegion(r.drone);
     this.audio.setReverb(r.reverb);
+    this.audio.setRegionReverb(r.id);
     this.post.setLut(regionLut(r.id));
     this.world.lights.setRegionLighting(r.moon * (this.world.arenaPhase === 2 && r.id === 'arena' ? 0.2 : 1), r.ambient);
   }
@@ -1227,6 +1233,7 @@ export class Game {
     this.world.shafts.update(this.time.real, this.moonK * (this.region.id === 'cathedral' ? 1 : 0.5));
 
     // Audio
+    this.audio.updateOcclusion(realDt);
     this.ambience.update(realDt, {
       dread: this.horror.dread,
       health: p.health / p.maxHealth,

@@ -197,7 +197,7 @@ export class Abilities {
         a.stuck = true;
         a.life = 0;
         this.ctx.particles.dust(a.pos, 5, 0x4a443c);
-        this.ctx.audio.playAt('step_wood', a.pos, { volume: 0.5, rate: 1.6 });
+        this.ctx.audio.playAt('hit_stone', a.pos, { volume: 0.4, rate: 1.4 });
       } else a.pos.copy(_b);
       a.mesh.position.copy(a.pos);
       a.mesh.lookAt(_b.copy(a.pos).add(a.vel));
@@ -215,7 +215,7 @@ export class Abilities {
     ctx.hitstop(0.45, 0.25); // a held breath before the release
     ctx.flash(0.25, 0x9fd0ff);
     ctx.shake(0.2);
-    ctx.audio.play('flame_burst', { volume: 0.9, rate: 0.7 });
+    ctx.audio.play('blue_roar', { volume: 1 });
     ctx.lights.flash(p.center(new THREE.Vector3()), 0x6aa8ff, 30, 12, 0.6);
     ctx.gpu.blueBurst(p.center(new THREE.Vector3()), 50, 0.8);
     switch (id) {
@@ -277,6 +277,7 @@ export class Abilities {
       mesh.renderOrder = 5;
       ctx.scene.add(mesh);
       this.patches.push({ pos: pos.clone(), r: 1.8, t: 0, life: 6, tick: 0, mesh });
+      ctx.audio.playAt('blue_roar', pos, { volume: 0.5, rate: 1.2, ref: 5 });
     }
   }
 

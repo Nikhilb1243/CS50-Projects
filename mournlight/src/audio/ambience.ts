@@ -240,6 +240,19 @@ export class Ambience {
       }
     }
 
+    // Music: sparse tolling motif while exploring, a bowed ostinato that
+    // thickens and quickens each boss phase.
+    this.musicT -= dt;
+    if (this.musicT <= 0) {
+      if (s.bossActive) {
+        const ph = Math.min(3, s.bossPhase);
+        this.ostinato(now, ph);
+        this.musicT = ph >= 2 ? 1.84 : 3.2;
+      } else {
+        if (s.dread < 0.6 && Math.random() < 0.5) this.tolls(now);
+        this.musicT = rand(28, 55);
+      }
+    }
     // Boss pulse
     if (s.bossActive) {
       this.bossBeat -= dt;
@@ -248,6 +261,55 @@ export class Ambience {
         this.engine.play('boom', { volume: s.bossPhase === 2 ? 0.55 : 0.4, vary: 0.02 });
       }
     }
+  }
+
+  private musicT = 12;
+  private note(t: number, freq: number, dur: number, vol: number, type: OscillatorType, cutoff: number): void {
+    const ctx = this.engine.ctx;
+    const o = ctx.createOscillator();
+    const o2 = ctx.createOscillator();
+    o.type = o2.type = type;
+    o.frequency.value = freq;
+    o2.frequency.value = freq * 1.004;
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = cutoff;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol, t + Math.min(0.25, dur * 0.3));
+    g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
+    o.connect(f);
+    o2.connect(f);
+    f.connect(g);
+    g.connect(this.engine.amb);
+    o.start(t);
+    o2.start(t);
+    o.stop(t + dur + 0.05);
+    o2.stop(t + dur + 0.05);
+  }
+
+  /** Distant, detuned bell tones: a three-note motif in a minor mode. */
+  private tolls(now: number): void {
+    const base = 146.8; // D3
+    const seq = [0, 3, 7, 5, 0].slice(0, 3 + Math.floor(Math.random() * 3));
+    seq.forEach((st, i) => {
+      const f = base * Math.pow(2, st / 12) * 2;
+      this.note(now + i * 1.7, f, 4, 0.035, 'sine', 3000);
+      this.note(now + i * 1.7, f * 2.76, 2.5, 0.01, 'sine', 5000);
+    });
+  }
+
+  /** One bar of the boss theme; phase raises register, density and brightness. */
+  private ostinato(now: number, phase: number): void {
+    const root = 73.4; // D2
+    const pat = phase >= 2 ? [0, 1, 0, 3, 0, 1, 6, 5] : [0, 0, 1, 0];
+    const step = phase >= 2 ? 0.23 : 0.8;
+    pat.forEach((st, i) => {
+      const f = root * Math.pow(2, st / 12);
+      this.note(now + i * step, f, step * 1.6, phase >= 2 ? 0.07 : 0.06, 'sawtooth', 380 + phase * 380);
+      if (phase >= 2 && i % 2 === 0) this.note(now + i * step, f * 4, step * 1.2, 0.018, 'triangle', 2400);
+    });
+    if (phase >= 2) this.note(now, root * 0.5, step * 8, 0.05, 'sawtooth', 200);
   }
 
   private behind(s: AmbienceState, dist: number): void {

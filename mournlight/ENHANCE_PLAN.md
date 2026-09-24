@@ -107,3 +107,11 @@ pmndrs postprocessing + Web Audio), everything original (names, lore, enemies, d
 - `ai/bosses.ts`: `DeepBoss` base (Combatant, lockable, weak point = double damage, telegraph markers, own arena flames, reset on death/leaving), **The Bone Choir** (crawling fused mass, Dirge ring / Bone Hail / Grasp wave; weak point the Cantor head; phase 2 splits into three orbiting singing parts with separate health) and **The Hanged Warden** (pendulum swings from a gibbet that scythe the deck, Toll shockwave; weak point the caged heart; phase 2 the chains snap, it crashes down and fights with its bell: slam, Knell, wave).
 - Cinematic intro (camera move + name card via `hud.banner`) for both; boss bar, boss music flag, saving of defeated bosses; objectives and notes (Cantor weakness, caged heart) extended for both regions.
 - Not done: third phase, bespoke boss audio (reuses wail/shockwave/roar), rising water drowning damage, extra weapons (upgrades were added instead).
+
+### Milestone 6: done (session 1)
+- Stayed fully procedural (no external assets added, so no CREDITS.md needed).
+- New synthesized sounds: `hit_stone` (blade/arrow on stone), `bow_creak` (draw), `bow_twang` + `arrow_whistle` (release, pitched by draw strength), `blue_roar` (ultimates, blue-fire patches). Existing sounds already had random pitch variation (`vary`).
+- Footsteps by surface (`Player.surface()`): stone in crypt/catacombs/cathedral/tower, wood on boardwalks and the gibbet deck, water in the flood and the drowned basin, dirt elsewhere.
+- Per-region reverb: `AudioEngine.setRegionReverb(id)` builds a generated impulse response per region (length, decay, brightness, early reflections) and cross-fades between two convolvers.
+- Occlusion: positional one-shots and attached creature voices get a low-pass (650 Hz) and quieter gain when the camera has no line of sight to them (`audio.occluded`, rechecked 4x/s).
+- Dynamic music in `Ambience`: sparse detuned bell motif while exploring (only when dread is low); bosses get a bowed sawtooth ostinato that gains register, density, tempo and a sub drone in phase 2+, on top of the existing boss pad and pulse.

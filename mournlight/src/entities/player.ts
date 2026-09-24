@@ -217,8 +217,8 @@ export class Player extends Actor {
     const dmg = (BOW.damage[0] + (BOW.damage[1] - BOW.damage[0]) * k) * this.damageMult;
     this.ctx.abilities.fireArrow(from, dir, speed, dmg);
     this.progress.arrows--;
-    this.ctx.audio.play('swing', { volume: 0.7, rate: 1.6 + k * 0.3 });
-    this.ctx.audio.play('block', { volume: 0.2, rate: 2.2 });
+    this.ctx.audio.play('bow_twang', { volume: 0.8, rate: 0.9 + k * 0.2 });
+    this.ctx.audio.play('arrow_whistle', { volume: 0.25 + k * 0.3, rate: 0.9 + k * 0.3 });
     this.ctx.noise.emit(this.pos, 6);
   }
 
@@ -475,7 +475,7 @@ export class Player extends Actor {
         }
         this.draw = 0;
         this.setState('draw');
-        this.ctx.audio.play('step_wood', { volume: 0.3, rate: 0.5 });
+        this.ctx.audio.play('bow_creak', { volume: 0.6 });
         return true;
       }
       this.startAttack(attack(this.weapon.light));
@@ -546,13 +546,23 @@ export class Player extends Actor {
     const ph = Math.floor(this.anim.phase / Math.PI);
     if (ph !== this.stepPhase) {
       this.stepPhase = ph;
-      const surface = this.inWater ? 'step_water' : this.pos.y > 10 || this.pos.y < -3 ? 'step_stone' : 'step_dirt';
+      const surface = this.inWater ? 'step_water' : this.surface();
       const vol = this.sprinting ? 0.8 : sp > 3 ? 0.55 : 0.35;
       this.ctx.audio.play(surface, { volume: vol });
       this.ctx.noise.emit(this.pos, this.sprinting ? 13 : sp > 3 ? 8 : 4);
       if (this.inWater) this.ctx.particles.splash(this.tmp.copy(this.pos).setY(TERRAIN.waterLevel + 0.05), 6);
       else if (this.sprinting) this.ctx.particles.dust(this.tmp.copy(this.pos).setY(this.pos.y + 0.05), 2);
     }
+  }
+
+  /** Footstep material under the Revenant. */
+  private surface(): string {
+    const p = this.pos;
+    const region = this.ctx.world.regionAt(p).id;
+    if (region === 'bellspire') return p.y > 37 ? 'step_wood' : p.y > 0.5 ? 'step_stone' : 'step_dirt';
+    if (region === 'catacombs' || region === 'crypt' || region === 'cathedral') return 'step_stone';
+    if (region === 'village' && p.y > 0.2) return 'step_wood';
+    return p.y > 10 || p.y < -3 ? 'step_stone' : 'step_dirt';
   }
 
   private stAir(dt: number): void {
@@ -846,7 +856,7 @@ export class Player extends Actor {
         a.clanged = true;
         const p = c0.a.clone().addScaledVector(d, hit);
         this.ctx.gpu.sparks(p, d.clone().negate(), 16);
-        this.ctx.audio.playAt('block', p, { volume: 0.5, rate: 1.3 });
+        this.ctx.audio.playAt('hit_stone', p, { volume: 0.7 });
       }
     }
     a.prev = cur.map((c) => ({ a: c.a.clone(), b: c.b.clone() }));
