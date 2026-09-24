@@ -221,10 +221,10 @@ export function stoneWall(n = 512, seed = 1): TextureSet {
   const fine = fbmField(n, 64, 3, seed + 9);
   const h = new Float32Array(n * n);
   for (let i = 0; i < h.length; i++) h[i] = b.height[i] * 0.8 + noise[i] * 0.25 + fine[i] * 0.12;
-  const c1 = hexToRgb(0x5d5a55);
-  const c2 = hexToRgb(0x45423e);
-  const moss = hexToRgb(0x3a4133);
-  const mortar = hexToRgb(0x2a2825);
+  const c1 = hexToRgb(0x98938a);
+  const c2 = hexToRgb(0x7a766e);
+  const moss = hexToRgb(0x5f6a52);
+  const mortar = hexToRgb(0x45423d);
   return finishSet(
     n,
     h,
@@ -246,9 +246,9 @@ export function flagstone(n = 512, seed = 2): TextureSet {
   const fine = fbmField(n, 48, 3, seed + 7);
   const h = new Float32Array(n * n);
   for (let i = 0; i < h.length; i++) h[i] = b.height[i] * 0.7 + noise[i] * 0.3 + fine[i] * 0.1;
-  const c1 = hexToRgb(0x4e4b46);
-  const c2 = hexToRgb(0x3b3935);
-  const dirt = hexToRgb(0x2c2822);
+  const c1 = hexToRgb(0x8a857c);
+  const c2 = hexToRgb(0x6d6962);
+  const dirt = hexToRgb(0x4a443b);
   return finishSet(
     n,
     h,
@@ -286,8 +286,8 @@ export function woodPlanks(n = 512, seed = 3): TextureSet {
       h[i] = e * (0.6 + g * 0.15 + fine[i] * 0.1);
     }
   }
-  const c1 = hexToRgb(0x4a3a2b);
-  const c2 = hexToRgb(0x2e241b);
+  const c1 = hexToRgb(0x7a6550);
+  const c2 = hexToRgb(0x564535);
   return finishSet(
     n,
     h,
@@ -295,7 +295,7 @@ export function woodPlanks(n = 512, seed = 3): TextureSet {
       const x = i % n;
       const g = Math.sin((x * 0.9 + grain[i] * 40) * 0.6) * 0.5 + 0.5;
       let c = mix3(c1, c2, id[i] * 0.6 + g * 0.3);
-      c = mix3([0.08, 0.07, 0.06], c, edge[i]);
+      c = mix3([0.18, 0.15, 0.12], c, edge[i]);
       const f = 0.75 + fine[i] * 0.3;
       return [c[0] * f, c[1] * f, c[2] * f];
     },
@@ -310,9 +310,9 @@ export function plaster(n = 512, seed = 4): TextureSet {
   const fine = fbmField(n, 64, 2, seed + 2);
   const h = new Float32Array(n * n);
   for (let i = 0; i < h.length; i++) h[i] = noise[i] * 0.6 + fine[i] * 0.3;
-  const c1 = hexToRgb(0x6b645a);
-  const c2 = hexToRgb(0x4a4238);
-  const rot = hexToRgb(0x2f3228);
+  const c1 = hexToRgb(0xa39a8b);
+  const c2 = hexToRgb(0x80766a);
+  const rot = hexToRgb(0x4c5242);
   return finishSet(
     n,
     h,
@@ -338,8 +338,8 @@ export function bark(n = 256, seed = 5): TextureSet {
       h[i] = ridge * 0.7 + noise[i] * 0.3;
     }
   }
-  const c1 = hexToRgb(0x2d2823);
-  const c2 = hexToRgb(0x171412);
+  const c1 = hexToRgb(0x5a534a);
+  const c2 = hexToRgb(0x322c27);
   return finishSet(n, h, (i) => mix3(c2, c1, h[i]), (i) => 0.9 - h[i] * 0.1, 4);
 }
 
@@ -366,9 +366,9 @@ export function rock(n = 512, seed = 7): TextureSet {
   const cracks = fbmField(n, 16, 3, seed + 3);
   const h = new Float32Array(n * n);
   for (let i = 0; i < h.length; i++) h[i] = noise[i] * 0.8 - Math.max(0, 0.08 - Math.abs(cracks[i] - 0.5)) * 4;
-  const c1 = hexToRgb(0x55524c);
-  const c2 = hexToRgb(0x34322e);
-  const lichen = hexToRgb(0x4b4f3e);
+  const c1 = hexToRgb(0x8e8a82);
+  const c2 = hexToRgb(0x5e5a54);
+  const lichen = hexToRgb(0x6e7560);
   return finishSet(
     n,
     h,
@@ -393,16 +393,16 @@ export function roofTiles(n = 512, seed = 8): TextureSet {
       h[i] = b.height[i] * (0.4 + fy * 0.6) + noise[i] * 0.2;
     }
   }
-  const c1 = hexToRgb(0x3a3430);
-  const c2 = hexToRgb(0x26221f);
-  const moss = hexToRgb(0x333a2c);
+  const c1 = hexToRgb(0x655c55);
+  const c2 = hexToRgb(0x4a433e);
+  const moss = hexToRgb(0x566048);
   return finishSet(
     n,
     h,
     (i) => {
       let c = mix3(c1, c2, b.id[i]);
       c = mix3(c, moss, clamp01((noise[i] - 0.5) * 3) * 0.5);
-      return mix3([0.05, 0.05, 0.05], c, b.edge[i]);
+      return mix3([0.12, 0.11, 0.1], c, b.edge[i]);
     },
     (i) => 0.8 + noise[i] * 0.15,
     3,
@@ -414,8 +414,8 @@ export function iron(n = 256, seed = 9): TextureSet {
   const rust = fbmField(n, 4, 4, seed + 1);
   const h = new Float32Array(n * n);
   for (let i = 0; i < h.length; i++) h[i] = noise[i] * 0.4 + Math.max(0, rust[i] - 0.5);
-  const c1 = hexToRgb(0x3c3d3f);
-  const r = hexToRgb(0x4d3322);
+  const c1 = hexToRgb(0x62646a);
+  const r = hexToRgb(0x7a5238);
   return finishSet(n, h, (i) => mix3(c1, r, clamp01((rust[i] - 0.45) * 2.5)), (i) => 0.45 + clamp01((rust[i] - 0.45) * 2.5) * 0.45, 1.5);
 }
 
@@ -428,8 +428,8 @@ export function cloth(n = 256, seed = 10): TextureSet {
       h[i] = (Math.sin(x * 1.6) * Math.sin(y * 1.6)) * 0.15 + noise[i] * 0.5;
     }
   }
-  const c1 = hexToRgb(0x3a2e2a);
-  const c2 = hexToRgb(0x1e1816);
+  const c1 = hexToRgb(0x5e4c45);
+  const c2 = hexToRgb(0x3a2e2a);
   return finishSet(n, h, (i) => mix3(c2, c1, noise[i]), () => 0.95, 1.2);
 }
 

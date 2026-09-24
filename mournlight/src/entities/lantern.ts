@@ -85,7 +85,7 @@ export class Lantern {
     const radiusK = 0.55 + 0.45 * Math.min(1, this.fuel / 25);
     this.light.intensity = T.lanternIntensity * this.brightness * clamp(flick, 0.2, 1.2);
     this.light.distance = T.lanternRadius * radiusK;
-    this.glowLight.intensity = this.lit ? 0 : 0.12;
+    this.glowLight.intensity = this.lit ? 0 : 0.45;
     const flame = this.visual.flame;
     flame.visible = this.brightness > 0.05;
     flame.scale.set(1, 0.7 + flick * 0.5, 1).multiplyScalar(Math.max(0.05, this.brightness));

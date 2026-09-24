@@ -64,7 +64,7 @@ export class LightManager {
 
     const n = quality === 'high' ? 8 : quality === 'medium' ? 6 : 4;
     for (let i = 0; i < n; i++) {
-      const l = new THREE.PointLight(0xff9a4a, 0, 10, 1.7);
+      const l = new THREE.PointLight(0xff9a4a, 0, 10, 1.5);
       l.castShadow = false;
       scene.add(l);
       this.pool.push(l);
@@ -218,7 +218,7 @@ export class LightManager {
       l.distance = e.f.distance;
       // fade lights near the pool cut-off distance so swapping is invisible
       const fade = 1 - Math.max(0, (Math.sqrt(e.d) - 70) / 20);
-      l.intensity = e.f.intensity * e.f.flicker * e.f.level * fade;
+      l.intensity = e.f.intensity * 1.8 * e.f.flicker * e.f.level * fade;
     }
   }
 

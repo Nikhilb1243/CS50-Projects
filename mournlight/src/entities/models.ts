@@ -164,9 +164,9 @@ function limbs(
 function buildRevenant(): ModelInstance {
   const p = HUMAN;
   const b = new SkinBuilder(p);
-  const cloak = 0x2b2723;
-  const cloak2 = 0x1f1c19;
-  const leather = 0x3d3027;
+  const cloak = 0x3a352f;
+  const cloak2 = 0x2c2824;
+  const leather = 0x54433a;
   const wraps = 0x6a6154;
   const skin = 0x7d7a74;
 
@@ -257,9 +257,9 @@ function buildShambler(phantom = false): ModelInstance {
   const p: Proportions = { ...HUMAN, upperArm: 0.33, forearm: 0.31, hand: 0.12 };
   const b = new SkinBuilder(p);
   b.grime = 0.3;
-  const skin = 0x59614f;
-  const skin2 = 0x434a3b;
-  const rag = 0x37322b;
+  const skin = 0x6f7862;
+  const skin2 = 0x565e4c;
+  const rag = 0x4a443b;
   const bone = 0x9f9884;
 
   b.add('hips', box(0.34, 0.22, 0.24), skin2);
@@ -394,8 +394,8 @@ function buildCrawler(): ModelInstance {
   };
   const b = new SkinBuilder(p);
   b.grime = 0.35;
-  const skin = 0x5a4f47;
-  const dark = 0x2b2420;
+  const skin = 0x6e6158;
+  const dark = 0x3a322c;
   const teeth = 0xc4bba2;
   b.add('hips', box(0.26, 0.16, 0.16), dark);
   b.add('spine', cyl(0.09, 0.11, 0.2, 7), skin, { pos: [0, 0.06, 0], scale: [1, 1, 0.75] });
@@ -435,11 +435,11 @@ function buildKnight(): ModelInstance {
   const p = HUMAN;
   const b = new SkinBuilder(p);
   b.grime = 0.3;
-  const armor = 0x4d5b58;
-  const armor2 = 0x3a4543;
+  const armor = 0x66766f;
+  const armor2 = 0x4c5955;
   const rust = 0x5e4a36;
-  const cloth = 0x20272a;
-  const weed = 0x2c3d28;
+  const cloth = 0x2e373a;
+  const weed = 0x3c5236;
 
   b.add('hips', cyl(0.2, 0.25, 0.26, 8, false), armor2, { pos: [0, -0.05, 0], slot: 1, scale: [1, 1, 0.8] });
   b.add('spine', cyl(0.17, 0.18, 0.16, 8), cloth, { pos: [0, 0.05, 0], scale: [1, 1, 0.78] });
@@ -632,8 +632,8 @@ function buildCorpse(): ModelInstance {
   const p = HUMAN;
   const b = new SkinBuilder(p);
   b.grime = 0.35;
-  const rag = 0x3b352e;
-  const skin = 0x6f665a;
+  const rag = 0x4e473e;
+  const skin = 0x7f7566;
   b.add('hips', box(0.3, 0.2, 0.2), rag);
   b.add('spine', cyl(0.14, 0.15, 0.16, 7), rag, { pos: [0, 0.05, 0], scale: [1, 1, 0.7] });
   b.add('chest', cyl(0.18, 0.14, 0.3, 7), rag, { pos: [0, 0.1, 0], scale: [1, 1, 0.7] });

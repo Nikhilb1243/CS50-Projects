@@ -34,6 +34,9 @@ import { PLAYER_TUNING } from './data/stats';
 
 type Mode = 'loading' | 'title' | 'playing' | 'paused' | 'menu' | 'dead' | 'cinematic';
 
+/** Where the title screen's camera lingers: the cathedral portal. */
+const TITLE_FOCUS = new THREE.Vector3(0, 14.3, -44);
+
 export class Game {
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
@@ -104,7 +107,7 @@ export class Game {
     this.cam = new ThirdPersonCamera(window.innerWidth / window.innerHeight);
     this.scene.add(this.cam.camera);
     // faint cold fill that follows the view so silhouettes stay readable
-    const fill = new THREE.PointLight(0x8a96a8, 0.55, 8, 1.4);
+    const fill = new THREE.PointLight(0x8a96a8, 0.9, 8, 1.3);
     fill.position.set(0, 0.4, 0);
     this.cam.camera.add(fill);
     this.input = new Input(canvas);
@@ -767,8 +770,12 @@ export class Game {
     }
   }
 
+  private get focus(): THREE.Vector3 {
+    return this.mode === 'title' ? TITLE_FOCUS : this.player.pos;
+  }
+
   private updateRegion(): void {
-    const r = this.world.regionAt(this.player.pos);
+    const r = this.world.regionAt(this.focus);
     if (r.id !== this.region.id) {
       this.region = r;
       const last = this.lastRegionBanner.get(r.id) ?? -1e9;
@@ -827,10 +834,10 @@ export class Game {
     const look = this.mode === 'playing' || this.mode === 'dead' ? this.input.consumeLook(realDt) : { x: 0, y: 0 };
     if (this.mode === 'title' || (this.mode === 'menu' && this.menus.current === 'victory' && false)) {
       this.titleT += realDt;
-      const t = this.titleT * 0.05;
-      const pos = new THREE.Vector3(Math.sin(t) * 9, 5.5, 52 + Math.cos(t) * 4);
+      const t = this.titleT * 0.04;
+      const pos = new THREE.Vector3(Math.sin(t) * 7 + 3, 16.4 + Math.sin(t * 0.7) * 0.4, -36.5 + Math.cos(t) * 1.5);
       this.cam.camera.position.copy(pos);
-      this.cam.camera.lookAt(0, 7, -30);
+      this.cam.camera.lookAt(0, 19.5, -52);
     } else {
       const lt = p.lockTarget;
       this.cam.lockTarget = lt && lt.alive ? lt.pos : null;
@@ -856,7 +863,7 @@ export class Game {
     this.updateAtmosphere(realDt);
     const camPos = this.cam.camera.position;
     const fogDist = Math.min(170, 2.6 / Math.max(0.012, this.fogDensity));
-    this.world.update(realDt, this.time.real, camPos, p.pos, alpha, fogDist);
+    this.world.update(realDt, this.time.real, camPos, this.focus, alpha, fogDist);
     this.particles.update(scaledDt);
     this.ambientParticles(realDt);
     fogUniforms.fogTime.value = this.time.real;
@@ -910,7 +917,7 @@ export class Game {
     this.fog.color.copy(this.fogColor);
     this.fog.density = this.fogDensity;
     this.moonK = damp(this.moonK, r.id === 'crypt' ? 0 : r.moon > 0 ? 1 : 0, 1, dt);
-    fogUniforms.fogHeightBase.value = damp(fogUniforms.fogHeightBase.value, this.player.pos.y - 2, 1, dt);
+    fogUniforms.fogHeightBase.value = damp(fogUniforms.fogHeightBase.value, this.focus.y - 2, 1, dt);
   }
 
   private ambientParticles(dt: number): void {

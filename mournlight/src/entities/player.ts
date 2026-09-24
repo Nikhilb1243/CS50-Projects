@@ -419,6 +419,11 @@ export class Player extends Actor {
     this.move(this.tmp, true);
     if (this.grounded && this.vy <= 0 && this.stateTime > 0.05) this.land();
     else if (this.vy > 0 && this.lastMove.y < this.vy * dt * 0.3) this.vy = 0; // bonked head
+    // failsafe: wedged inside geometry and unable to fall
+    if (this.stateTime > 5 && Math.abs(this.pos.y - this.prevPos.y) < 1e-4) {
+      this.teleport(this.lastSafe.clone().setY(this.lastSafe.y + 0.3));
+      this.setState('move');
+    }
   }
 
   private land(): void {

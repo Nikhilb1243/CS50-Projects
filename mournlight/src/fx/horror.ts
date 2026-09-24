@@ -97,16 +97,27 @@ export class HorrorDirector {
     if (this.dread < 0.78 || this.bossFight || p.state !== 'move') return;
     this.phantomTimer -= dt;
     if (this.phantomTimer > 0) return;
-    this.phantomTimer = rand(28, 50);
-    // spawn behind or beside the player, in the dark
+    // spawn behind or beside the player, somewhere it can actually stand
     const f = ctx.cam.forward(this.tmp);
-    const ang = Math.atan2(f.x, f.z) + Math.PI + rand(-1.2, 1.2);
-    const d = rand(9, 14);
-    const x = p.pos.x + Math.sin(ang) * d;
-    const z = p.pos.z + Math.cos(ang) * d;
-    const g = ctx.physics.groundHeight(x, z, p.pos.y + 4, 12);
-    if (g === null || Math.abs(g - p.pos.y) > 3) return;
-    const e = new Enemy(ctx, { type: 'shambler', p: [x, g, z] }, { phantom: true });
+    const base = Math.atan2(f.x, f.z) + Math.PI;
+    let spot: [number, number, number] | null = null;
+    for (let i = 0; i < 8 && !spot; i++) {
+      const ang = base + rand(-1.3, 1.3);
+      const d = rand(7, 13);
+      const x = p.pos.x + Math.sin(ang) * d;
+      const z = p.pos.z + Math.cos(ang) * d;
+      const g = ctx.physics.groundHeight(x, z, p.pos.y + 1.2, 6);
+      if (g === null || Math.abs(g - p.pos.y) > 2) continue;
+      const eye = p.pos.clone().setY(p.pos.y + 1.2);
+      if (!ctx.physics.lineOfSight(eye, new THREE.Vector3(x, g + 1.2, z))) continue;
+      spot = [x, g, z];
+    }
+    if (!spot) {
+      this.phantomTimer = 3;
+      return;
+    }
+    this.phantomTimer = rand(28, 50);
+    const e = new Enemy(ctx, { type: 'shambler', p: spot }, { phantom: true });
     e.lastKnown.copy(p.pos);
     this.phantom = e;
     this.phantomLife = 0;

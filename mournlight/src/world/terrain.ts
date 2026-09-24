@@ -130,13 +130,13 @@ export function buildTerrain(physics: Physics, detail: TextureSet, quality: 'low
   const positions = new Float32Array(m * m * 3);
   const colors = new Float32Array(m * m * 3);
   const idx: number[] = [];
-  const cGrass = new THREE.Color(0x3b3d31);
-  const cMud = new THREE.Color(0x2b2822);
-  const cWet = new THREE.Color(0x1f2320);
-  const cRock = new THREE.Color(0x4d4a45);
-  const cAsh = new THREE.Color(0x35322f);
-  const cRoad = new THREE.Color(0x4a443a);
-  const cMoss = new THREE.Color(0x2f3527);
+  const cGrass = new THREE.Color(0x66684f);
+  const cMud = new THREE.Color(0x544c3d);
+  const cWet = new THREE.Color(0x353b33);
+  const cRock = new THREE.Color(0x7c776e);
+  const cAsh = new THREE.Color(0x5c5853);
+  const cRoad = new THREE.Color(0x7a705f);
+  const cMoss = new THREE.Color(0x505b44);
   const tmp = new THREE.Color();
   const H = (xi: number, zi: number): number => grid[Math.min(n - 1, Math.max(0, zi)) * n + Math.min(n - 1, Math.max(0, xi))];
 
