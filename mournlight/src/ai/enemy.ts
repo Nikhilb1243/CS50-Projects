@@ -6,7 +6,7 @@ import { ENEMIES, type AttackChoice, type EnemyDef } from '../data/enemies';
 import { attack, type AttackDef } from '../data/attacks';
 import { attackPhase, attackPose } from '../entities/animator';
 import { keyPose, deathPose, STANCE_POSE, KEY_POSES } from '../entities/poses';
-import { ARMS_MASK, UPPER_MASK, addJoint, blendPose, makePose, type Pose } from '../entities/rig';
+import { ARMS_MASK, addJoint, blendPose, makePose, type Pose } from '../entities/rig';
 import { clamp, clamp01, lerp, rand, smoothstep, wrapAngle, yawTo, noise1 } from '../core/math';
 import type { Combatant, HitInfo, HitResult, Segment } from '../combat/combat';
 import { facing } from '../combat/combat';
@@ -875,5 +875,3 @@ function addPoseJitter(p: Pose, t: number): void {
   for (let i = 0; i < p.length - 3; i += 3) p[i] += noise1(t * 9 + i, i) * 0.05;
 }
 
-// Re-export for convenience
-export { UPPER_MASK };

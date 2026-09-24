@@ -5,7 +5,6 @@ import type { GameContext } from '../core/context';
 import type { EnemySpawn } from '../world/layout';
 import type { AttackChoice } from '../data/enemies';
 import type { Combatant, HitInfo, HitResult, Hurtbox } from '../combat/combat';
-import { attackPhase } from '../entities/animator';
 import { keyPose, KEY_POSES } from '../entities/poses';
 import { blendPose, type Pose } from '../entities/rig';
 import { clamp01, easeInOut, smoothstep, yawTo } from '../core/math';
@@ -32,13 +31,11 @@ export class Boss extends Enemy {
   private staffBody: RAPIER.RigidBody | null = null;
   private staffMesh: THREE.Object3D | null = null;
   private transformed = false;
-  private crownLightFlame: number | null = null;
 
   constructor(ctx: GameContext, spawn: EnemySpawn) {
     super(ctx, spawn);
     this.lockable = false;
     this.setState('dormant');
-    this.crownLightFlame = null;
   }
 
   get displayName(): string {
@@ -77,13 +74,11 @@ export class Boss extends Enemy {
     this.awareness = 2;
   }
 
-  protected perceive(dt: number, d: number): void {
+  protected perceive(_dt: number, _d: number): void {
     if (!this.fightActive) return;
     this.awareness = 2;
     this.canSee = true;
     this.lastKnown.copy(this.player.pos);
-    void dt;
-    void d;
   }
 
   protected availableAttacks(): AttackChoice[] {
@@ -384,7 +379,5 @@ export class Boss extends Enemy {
       this.staffMesh.scale.setScalar(1);
       this.staffMesh = null;
     }
-    void attackPhase;
-    void this.crownLightFlame;
   }
 }

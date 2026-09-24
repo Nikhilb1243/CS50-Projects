@@ -7,7 +7,7 @@ import { attack, type AttackDef } from '../data/attacks';
 import { attackPhase, attackPose } from './animator';
 import { keyPose, rollPose, deathPose, STANCE_POSE } from './poses';
 import { ARMS_MASK, UPPER_MASK, blendPose, makePose } from './rig';
-import { clamp, clamp01, damp, lerp, wrapAngle, yawTo, smoothstep } from '../core/math';
+import { clamp, clamp01, damp, wrapAngle, yawTo, smoothstep } from '../core/math';
 import type { Combatant, HitInfo, HitResult, Segment } from '../combat/combat';
 import { facing } from '../combat/combat';
 import { Lantern } from './lantern';
@@ -1052,9 +1052,5 @@ export class Player extends Actor {
     this.model.flash(this.hurtFlash);
     const flask = this.model.sockets.get('flask');
     if (flask) flask.visible = this.state === 'drink';
-  }
-
-  get staggerWeight(): number {
-    return lerp(0, 1, clamp01(this.hurtFlash));
   }
 }

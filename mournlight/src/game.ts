@@ -125,7 +125,6 @@ export class Game {
       levelUp: (a, cost) => this.applyLevelUp(a, cost),
       travel: (id) => this.travel(id),
       leaveShrine: () => this.leaveShrine(),
-      startFromIntro: () => this.newGame(),
       click: () => this.audio.play('ui_click', { volume: 0.6 }),
       move: () => this.audio.play('ui_move', { volume: 0.5 }),
     });
@@ -843,7 +842,7 @@ export class Game {
 
     // Camera
     const look = this.mode === 'playing' || this.mode === 'dead' ? this.input.consumeLook(realDt) : { x: 0, y: 0 };
-    if (this.mode === 'title' || (this.mode === 'menu' && this.menus.current === 'victory' && false)) {
+    if (this.mode === 'title') {
       this.titleT += realDt;
       const t = this.titleT * 0.04;
       const pos = new THREE.Vector3(Math.sin(t) * 7 + 3, 16.4 + Math.sin(t * 0.7) * 0.4, -36.5 + Math.cos(t) * 1.5);

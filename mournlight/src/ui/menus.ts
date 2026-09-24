@@ -13,7 +13,6 @@ export interface MenuCallbacks {
   levelUp(attrs: Attributes, cost: number): void;
   travel(shrineId: string): void;
   leaveShrine(): void;
-  startFromIntro(): void;
   click(): void;
   move(): void;
 }
