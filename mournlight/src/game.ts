@@ -4,7 +4,7 @@ import { GameLoop } from './core/loop';
 import { Input } from './core/input';
 import { Physics } from './core/physics';
 import { ThirdPersonCamera } from './core/camera';
-import { settings } from './core/settings';
+import { QUALITY_PROFILES, settings, type Quality } from './core/settings';
 import { events } from './core/events';
 import { clamp01, damp, lerp } from './core/math';
 import { loadSave, writeSave, type SaveData } from './core/save';
@@ -16,6 +16,9 @@ import { PostFX } from './fx/post';
 import { installFogChunks, fogUniforms } from './fx/fog';
 import { HorrorDirector } from './fx/horror';
 import { Sky } from './fx/sky';
+import { buildEnvironment } from './fx/envmap';
+import { regionLut } from './fx/lut';
+import { wetUniforms } from './world/wetness';
 import { CombatSystem } from './combat/combat';
 import { HazardSystem } from './combat/hazards';
 import { NoiseBus } from './ai/noise';
@@ -38,6 +41,17 @@ type Mode = 'loading' | 'title' | 'playing' | 'paused' | 'menu' | 'dead' | 'cine
 const TITLE_FOCUS = new THREE.Vector3(0, 14.3, -44);
 const HEMI_SKY = new THREE.Color(0x4f5d74);
 const HEMI_RED = new THREE.Color(0x8a2a1c);
+const MOON_DIR = new THREE.Vector3(0.45, 0.62, -0.64).normalize();
+/** Per-region surface wetness, environment-reflection strength and exposure bias. */
+const REGION_LOOK: Record<string, { wet: number; env: number; exposure: number }> = {
+  crypt: { wet: 0.55, env: 0.06, exposure: 0.85 },
+  road: { wet: 0.35, env: 0.45, exposure: 1 },
+  village: { wet: 1, env: 0.55, exposure: 1 },
+  forest: { wet: 0.45, env: 0.35, exposure: 0.95 },
+  cathedral: { wet: 0.3, env: 0.3, exposure: 1 },
+  arena: { wet: 0.25, env: 0.35, exposure: 1 },
+};
+const DEFAULT_LOOK = { wet: 0.3, env: 0.35, exposure: 1 };
 
 export class Game {
   private renderer: THREE.WebGLRenderer;
@@ -89,15 +103,15 @@ export class Game {
   private moonK = 1;
   private rotK = 0;
   private hurtK = 0;
+  private envTex: THREE.Texture | null = null;
+  private appliedQuality: Quality | null = null;
   private uiRoot: HTMLElement;
 
   constructor(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     this.uiRoot = uiRoot;
     installFogChunks();
-    const q = this.quality;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
-    const dpr = window.devicePixelRatio || 1;
-    this.renderer.setPixelRatio(q === 'high' ? Math.min(dpr, 1.5) : q === 'medium' ? Math.min(dpr, 1) : Math.min(dpr, 1) * 0.75);
+    this.applyPixelRatio();
     this.renderer.setSize(window.innerWidth, window.innerHeight, false);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -155,9 +169,11 @@ export class Game {
     await this.world.build(progress);
     progress(0.96, 'Composing the dirge');
     await this.audio.init(this.scene, (p) => progress(0.96 + p * 0.03, 'Composing the dirge'));
-    this.sky = new Sky(this.scene, new THREE.Vector3(0.45, 0.62, -0.64));
-    this.post = new PostFX(this.renderer, this.scene, this.cam.camera, this.quality);
+    this.sky = new Sky(this.scene, MOON_DIR);
+    this.envTex = buildEnvironment(this.renderer, MOON_DIR);
+    this.post = new PostFX(this.renderer, this.scene, this.cam.camera, QUALITY_PROFILES[this.quality], settings.value.toneMapping);
     this.post.setSize(window.innerWidth, window.innerHeight);
+    this.post.setLut(regionLut(this.region.id), true);
 
     // Context & entities
     const self = this;
@@ -229,6 +245,11 @@ export class Game {
       this.scene,
     );
     this.menus.setContinueAvailable(!!loadSave());
+    this.applyQuality();
+    settings.onChange((v) => {
+      if (v.quality !== this.appliedQuality) this.applyQuality();
+      this.post.setToneMapping(v.toneMapping);
+    });
     // Warm up shaders so the first frame of play does not hitch
     this.renderer.compile(this.scene, this.cam.camera);
     this.mode = 'title';
@@ -241,6 +262,8 @@ export class Game {
   /** Development URL parameters: ?autostart&tp=<region>&yaw=<rad>&nolantern&hitboxes&god */
   private devParams(): void {
     const q = new URLSearchParams(location.search);
+    (window as unknown as { __settings: typeof settings }).__settings = settings;
+    (window as unknown as { __lum: () => number }).__lum = () => this.post.debugLuminance();
     if (q.has('hidemenu')) this.menus.show(null);
     if (q.has('maxsteps')) {
       // headless testing: let the simulation keep real time at very low frame rates
@@ -794,7 +817,35 @@ export class Game {
     }
     this.ambience.setRegion(r.drone);
     this.audio.setReverb(r.reverb);
+    this.post.setLut(regionLut(r.id));
     this.world.lights.setRegionLighting(r.moon * (this.world.arenaPhase === 2 && r.id === 'arena' ? 0.2 : 1), r.ambient);
+  }
+
+  private applyPixelRatio(): void {
+    const q = QUALITY_PROFILES[settings.value.quality];
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.maxDpr) * q.resScale);
+  }
+
+  /** Apply the current quality preset at runtime: resolution, post chain, shadows, lights, IBL. */
+  private applyQuality(): void {
+    const id = settings.value.quality;
+    const q = QUALITY_PROFILES[id];
+    const first = this.appliedQuality === null;
+    this.quality = id;
+    this.appliedQuality = id;
+    this.applyPixelRatio();
+    this.renderer.setSize(window.innerWidth, window.innerHeight, false);
+    this.renderer.shadowMap.type = q.shadowRadius > 1 ? THREE.PCFShadowMap : THREE.BasicShadowMap;
+    this.world.lights.applyQuality(q, this.scene, this.cam.camera);
+    this.player.lantern.setShadow(q.lanternShadow);
+    this.scene.environment = q.envMap ? this.envTex : null;
+    if (!first) {
+      this.post.dispose();
+      this.post = new PostFX(this.renderer, this.scene, this.cam.camera, q, settings.value.toneMapping);
+      this.post.setSize(window.innerWidth, window.innerHeight);
+      this.post.setLut(regionLut(this.region.id), true);
+    }
+    this.particles.setViewport(window.innerHeight * this.renderer.getPixelRatio(), this.cam.camera.fov);
   }
 
   private debugTeleport(id: string): void {
@@ -867,6 +918,7 @@ export class Game {
       const target = this.tmp.lerpVectors(p.prevPos, p.pos, alpha);
       this.cam.update(realDt, target, look, this.physics);
     }
+    this.world.lights.updateShadows(realDt, this.scene, this.cam.camera);
 
     // Visuals
     p.renderUpdate(realDt, alpha);
@@ -879,6 +931,7 @@ export class Game {
     this.ambientParticles(realDt);
     fogUniforms.fogTime.value = this.time.real;
     this.sky.update(camPos, this.fogColor, this.time.real, this.moonK);
+    this.world.shafts.update(this.time.real, this.moonK * (this.region.id === 'cathedral' ? 1 : 0.5));
 
     // Audio
     this.ambience.update(realDt, {
@@ -907,7 +960,11 @@ export class Game {
       flash: this.flashAmt,
       flashColor: this.flashColor,
       rot: this.rotK,
-    });
+      moon: this.moonK,
+      camPos,
+      moonDir: MOON_DIR,
+      exposureBias: (REGION_LOOK[this.region.id] ?? DEFAULT_LOOK).exposure,
+    }, realDt);
     this.renderer.info.reset();
     this.post.render(realDt);
     this.debugOverlay.update(realDt, `region ${this.region.id} · dread ${this.horror.dread.toFixed(2)} · mode ${this.mode}`);
@@ -932,6 +989,9 @@ export class Game {
     const red = r.id === 'arena' && this.world.arenaPhase === 2;
     this.world.lights.hemi.color.lerp(red ? HEMI_RED : HEMI_SKY, 1 - Math.exp(-1.5 * dt));
     fogUniforms.fogHeightBase.value = damp(fogUniforms.fogHeightBase.value, this.focus.y - 2, 1, dt);
+    const look = REGION_LOOK[r.id] ?? DEFAULT_LOOK;
+    wetUniforms.uWetness.value = damp(wetUniforms.uWetness.value, look.wet, 0.8, dt);
+    this.scene.environmentIntensity = damp(this.scene.environmentIntensity, look.env * (red ? 0.5 : 1), 1, dt);
   }
 
   private ambientParticles(dt: number): void {
@@ -995,6 +1055,7 @@ export class Game {
   private onResize(): void {
     const w = window.innerWidth;
     const h = window.innerHeight;
+    this.applyPixelRatio();
     this.renderer.setSize(w, h, false);
     this.cam.camera.aspect = w / h;
     this.cam.camera.updateProjectionMatrix();

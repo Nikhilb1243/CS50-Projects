@@ -16,7 +16,7 @@
 import type { EnemyType } from '../data/enemies';
 
 export type V3 = [number, number, number];
-export type MatId = 'stone' | 'darkstone' | 'flag' | 'wood' | 'plaster' | 'rock' | 'roof' | 'iron' | 'bone' | 'wax';
+export type MatId = 'stone' | 'darkstone' | 'flag' | 'wood' | 'wetwood' | 'plaster' | 'rock' | 'roof' | 'iron' | 'bone' | 'wax';
 export type Side = 'n' | 's' | 'e' | 'w';
 
 export interface Opening {
@@ -309,15 +309,15 @@ S.push(
 // boardwalks linking islands (deck y 0.35)
 const BW = 0.35;
 S.push(
-  { t: 'boardwalk', pts: [[-66, BW, 30], [-74, BW, 30]], w: 2.4, m: 'wood' },
-  { t: 'boardwalk', pts: [[-88, BW, 36], [-92, BW, 40]], w: 2.2, m: 'wood' },
-  { t: 'boardwalk', pts: [[-86, BW, 24], [-92, BW, 16], [-101, BW, 16]], w: 2.2, m: 'wood' },
-  { t: 'boardwalk', pts: [[-112, BW, 10], [-120, BW, -4]], w: 2.2, m: 'wood' },
-  { t: 'boardwalk', pts: [[-114, BW, 20], [-126, BW, 26], [-135, BW, 28]], w: 2.2, m: 'wood' },
-  { t: 'boardwalk', pts: [[-100, BW, 53], [-114, BW, 58]], w: 2.2, m: 'wood' },
-  { t: 'boardwalk', pts: [[-104, BW, 10], [-101, BW, -2]], w: 2.2, m: 'wood' },
-  { t: 'boardwalk', pts: [[-94, BW, -8], [-85, BW, -10]], w: 2.2, m: 'wood' },
-  { t: 'boardwalk', pts: [[-121, BW, 45], [-126, BW, 52]], w: 2, m: 'wood' },
+  { t: 'boardwalk', pts: [[-66, BW, 30], [-74, BW, 30]], w: 2.4, m: 'wetwood' },
+  { t: 'boardwalk', pts: [[-88, BW, 36], [-92, BW, 40]], w: 2.2, m: 'wetwood' },
+  { t: 'boardwalk', pts: [[-86, BW, 24], [-92, BW, 16], [-101, BW, 16]], w: 2.2, m: 'wetwood' },
+  { t: 'boardwalk', pts: [[-112, BW, 10], [-120, BW, -4]], w: 2.2, m: 'wetwood' },
+  { t: 'boardwalk', pts: [[-114, BW, 20], [-126, BW, 26], [-135, BW, 28]], w: 2.2, m: 'wetwood' },
+  { t: 'boardwalk', pts: [[-100, BW, 53], [-114, BW, 58]], w: 2.2, m: 'wetwood' },
+  { t: 'boardwalk', pts: [[-104, BW, 10], [-101, BW, -2]], w: 2.2, m: 'wetwood' },
+  { t: 'boardwalk', pts: [[-94, BW, -8], [-85, BW, -10]], w: 2.2, m: 'wetwood' },
+  { t: 'boardwalk', pts: [[-121, BW, 45], [-126, BW, 52]], w: 2, m: 'wetwood' },
 );
 // Drowned Stair parapets: short wall segments stepping up both sides of the causeway
 {
@@ -417,6 +417,15 @@ S.push(
   { t: 'pillar', p: [-6, 14, -44], r: 0.5, h: 3.2, m: 'stone', square: true },
   { t: 'pillar', p: [6, 14, -44], r: 0.5, h: 3.2, m: 'stone', square: true },
 );
+// moonlight shafts through the east windows and the broken nave roof
+export const SHAFTS: { p: V3; w: number; h: number; len: number }[] = [
+  { p: [24.6, K + 11.5, -60], w: 2, h: 4.6, len: 17 },
+  { p: [24.6, K + 11.5, -94], w: 2, h: 4.6, len: 17 },
+  { p: [24.6, K + 11.5, -108], w: 2, h: 4.6, len: 17 },
+  { p: [-3, K + 20.5, -72], w: 3, h: 2.5, len: 25 },
+  { p: [4, K + 20.5, -86], w: 2.4, h: 3.5, len: 25 },
+  { p: [-2, K + 20.5, -98], w: 3.4, h: 2.2, len: 25 },
+];
 for (const z of [-58, -66, -74, -82, -90, -98, -106, -114]) {
   S.push({ t: 'pillar', p: [-10.5, K, z], r: 0.8, h: 20, m: 'stone' });
   S.push({ t: 'pillar', p: [10.5, K, z], r: 0.8, h: 20, m: 'stone' });

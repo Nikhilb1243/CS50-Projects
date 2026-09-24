@@ -3,6 +3,7 @@ import { clamp01, fbm2, lerp, smoothstep } from '../core/math';
 import { TERRAIN, TERRAIN_MODS, type TerrainMod } from './layout';
 import type { Physics } from '../core/physics';
 import { patchFog } from '../fx/fog';
+import { patchWet } from './wetness';
 import type { TextureSet } from './textures';
 
 // ---------------------------------------------------------------------------
@@ -105,7 +106,7 @@ export interface TerrainResult {
   heights: Float32Array;
 }
 
-export function buildTerrain(physics: Physics, detail: TextureSet, quality: 'low' | 'medium' | 'high'): TerrainResult {
+export function buildTerrain(physics: Physics, detail: TextureSet): TerrainResult {
   const { size, cells, center } = TERRAIN;
   const n = cells + 1;
   const step = size / cells;
@@ -125,7 +126,7 @@ export function buildTerrain(physics: Physics, detail: TextureSet, quality: 'low
   physics.addHeightfield(cells, heightsRapier, size, center[0], center[1]);
 
   // Mesh (optionally decimated on low quality)
-  const stride = quality === 'low' ? 2 : 1;
+  const stride = 1;
   const m = Math.floor(cells / stride) + 1;
   const positions = new Float32Array(m * m * 3);
   const colors = new Float32Array(m * m * 3);
@@ -253,6 +254,7 @@ diffuseColor.rgb *= triTex * (0.65 + 0.7 * triTex2) * 1.25;`,
   normal = normalize((viewMatrix * vec4(triN, 0.0)).xyz);
 }`,
         );
+      patchWet(shader);
     },
     'triplanar-terrain',
   );

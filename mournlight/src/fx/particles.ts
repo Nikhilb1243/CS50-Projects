@@ -210,7 +210,7 @@ export class Particles {
   private moteTimer = 0;
   private tmp = new THREE.Vector3();
 
-  constructor(scene: THREE.Scene, quality: 'low' | 'medium' | 'high') {
+  constructor(scene: THREE.Scene, quality: string) {
     const n = quality === 'low' ? 900 : 1800;
     this.glow = new ParticlePool(scene, n, true, 0.025);
     this.soft = new ParticlePool(scene, n, false, 0.035);

@@ -1,6 +1,11 @@
 import * as THREE from 'three';
 import { noise1, lerp, damp } from '../core/math';
-import type { Quality } from '../core/settings';
+import { CSM } from 'three/examples/jsm/csm/CSM.js';
+import { MAX_POINT_LIGHTS, QUALITY_PROFILES, type Quality, type QualityProfile } from '../core/settings';
+
+type OnBeforeCompile = (shader: THREE.WebGLProgramParametersWithUniforms, renderer: THREE.WebGLRenderer) => void;
+/** Direction towards the shadow-casting moon (also the direction of window light shafts, negated). */
+export const MOON_OFFSET = new THREE.Vector3(38, 70, 22);
 
 export interface FlameSource {
   pos: THREE.Vector3;
@@ -38,6 +43,13 @@ export class LightManager {
   hemiIntensity = 0.3;
   private shadowSnap = 4;
   private flameTime: { value: number };
+  private activeLights = 0;
+  /** Cascaded shadows (High/Ultra). When active the single moon light is hidden. */
+  private csm: CSM | null = null;
+  private csmMats = new Map<THREE.Material, OnBeforeCompile>();
+  private csmSyncT = 0;
+  private lastFov = 0;
+  private lastAspect = 0;
 
   constructor(
     scene: THREE.Scene,
@@ -45,7 +57,7 @@ export class LightManager {
   ) {
     this.moon = new THREE.DirectionalLight(0x8ea4c8, 0.5);
     this.moon.castShadow = true;
-    const res = quality === 'low' ? 1024 : 2048;
+    const res = QUALITY_PROFILES[quality].shadowRes;
     this.moon.shadow.mapSize.set(res, res);
     const cam = this.moon.shadow.camera;
     cam.left = -34;
@@ -62,13 +74,15 @@ export class LightManager {
     this.hemi = new THREE.HemisphereLight(0x4f5d74, 0x1c1914, 0.3);
     scene.add(this.hemi);
 
-    const n = quality === 'high' ? 8 : quality === 'medium' ? 6 : 4;
-    for (let i = 0; i < n; i++) {
+    // The pool is allocated at its maximum size; quality presets hide the lights they do not use.
+    for (let i = 0; i < MAX_POINT_LIGHTS; i++) {
       const l = new THREE.PointLight(0xff9a4a, 0, 10, 1.5);
       l.castShadow = false;
       scene.add(l);
       this.pool.push(l);
     }
+    this.activeLights = QUALITY_PROFILES[quality].pointLights;
+    this.pool.forEach((l, i) => (l.visible = i < this.activeLights));
 
     const tongueGeo = new THREE.ConeGeometry(0.5, 1, 8, 4, true);
     tongueGeo.translate(0, 0.5, 0);
@@ -178,7 +192,7 @@ export class LightManager {
     const fx = Math.round(focus.x / s) * s;
     const fz = Math.round(focus.z / s) * s;
     this.moonTarget.position.set(fx, focus.y, fz);
-    this.moon.position.set(fx + 38, focus.y + 70, fz + 22);
+    this.moon.position.set(fx, focus.y, fz).add(MOON_OFFSET);
 
     // Flicker + tongues
     this.flameTime.value = t;
@@ -186,8 +200,11 @@ export class LightManager {
     for (const f of this.flames) {
       const target = f.lit ? 1 : 0;
       f.level = damp(f.level, target, f.lit ? 2.5 : 4, dt);
-      const n = noise1(t * 7.3, f.seed) * 0.5 + noise1(t * 17.1, f.seed + 3) * 0.25;
-      f.flicker = 0.82 + n * 0.35;
+      const fast = f.tag === 'candles' ? 1.6 : 1;
+      const n = noise1(t * 7.3 * fast, f.seed) * 0.5 + noise1(t * 17.1 * fast, f.seed + 3) * 0.25;
+      // occasional draughts make a flame gutter and recover
+      const gust = Math.max(0, noise1(t * 0.63, f.seed + 9) - 0.5) * 2;
+      f.flicker = (0.82 + n * 0.35) * (1 - gust * gust * 0.4);
       for (const tg of f.tongues) {
         if (tg.idx < 0) continue;
         const sc = tg.scale * f.level * (0.85 + n * 0.4);
@@ -206,20 +223,130 @@ export class LightManager {
       .filter((f) => f.level > 0.02)
       .map((f) => ({ f, d: f.pos.distanceToSquared(camPos) }))
       .sort((a, b) => a.d - b.d);
-    for (let i = 0; i < this.pool.length; i++) {
+    for (let i = 0; i < this.activeLights; i++) {
       const l = this.pool[i];
       const e = sorted[i];
       if (!e || e.d > 90 * 90) {
         l.intensity = 0;
         continue;
       }
-      l.position.copy(e.f.pos).y += 0.3;
+      // the light source sways with the flame so shadows breathe
+      const sd = e.f.seed;
+      l.position.copy(e.f.pos);
+      l.position.x += noise1(t * 5.1, sd + 11) * 0.05;
+      l.position.y += 0.3 + noise1(t * 6.3, sd + 12) * 0.04;
+      l.position.z += noise1(t * 4.7, sd + 13) * 0.05;
       l.color.copy(e.f.color);
       l.distance = e.f.distance;
       // fade lights near the pool cut-off distance so swapping is invisible
       const fade = 1 - Math.max(0, (Math.sqrt(e.d) - 70) / 20);
       l.intensity = e.f.intensity * 1.8 * e.f.flicker * e.f.level * fade;
     }
+  }
+
+  /** Called after the camera has moved for the frame. */
+  updateShadows(dt: number, scene: THREE.Scene, camera: THREE.PerspectiveCamera): void {
+    const csm = this.csm;
+    if (!csm) return;
+    for (const l of csm.lights) {
+      l.intensity = this.moon.intensity;
+      l.color.copy(this.moon.color);
+    }
+    if (camera.fov !== this.lastFov || camera.aspect !== this.lastAspect) {
+      this.lastFov = camera.fov;
+      this.lastAspect = camera.aspect;
+      csm.updateFrustums();
+    }
+    this.csmSyncT -= dt;
+    if (this.csmSyncT <= 0) {
+      this.csmSyncT = 2;
+      this.syncCsmMaterials(scene);
+    }
+    csm.update();
+  }
+
+  /** Apply a quality preset at runtime (shadow resolution, softness, cascades, light count). */
+  applyQuality(q: QualityProfile, scene: THREE.Scene, camera: THREE.PerspectiveCamera): void {
+    const sh = this.moon.shadow;
+    if (sh.mapSize.x !== q.shadowRes) {
+      sh.mapSize.set(q.shadowRes, q.shadowRes);
+      sh.map?.dispose();
+      sh.map = null;
+    }
+    sh.radius = q.shadowRadius;
+    this.activeLights = q.pointLights;
+    this.pool.forEach((l, i) => {
+      l.visible = i < q.pointLights;
+      if (!l.visible) l.intensity = 0;
+    });
+    const want = q.cascades > 0;
+    if (this.csm && (!want || this.csm.cascades !== q.cascades || this.csm.maxFar !== q.shadowFar || this.csm.shadowMapSize !== q.shadowRes)) this.disableCsm();
+    if (want && !this.csm) {
+      const csm = new CSM({
+        camera,
+        parent: scene,
+        cascades: q.cascades,
+        maxFar: q.shadowFar,
+        mode: 'practical',
+        shadowMapSize: q.shadowRes,
+        shadowBias: -0.0004,
+        lightDirection: MOON_OFFSET.clone().negate().normalize(),
+        lightIntensity: this.moon.intensity,
+        lightNear: 1,
+        lightFar: 260,
+        lightMargin: 70,
+      });
+      csm.fade = true;
+      for (const l of csm.lights) {
+        l.shadow.normalBias = 0.04;
+        l.shadow.radius = q.shadowRadius;
+      }
+      this.csm = csm;
+      this.lastFov = 0;
+      this.syncCsmMaterials(scene);
+    }
+    if (this.csm) for (const l of this.csm.lights) l.shadow.radius = q.shadowRadius;
+    this.moon.visible = !this.csm;
+  }
+
+  private syncCsmMaterials(scene: THREE.Scene): void {
+    const csm = this.csm;
+    if (!csm) return;
+    scene.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const m of mats) {
+        const lit = (m as THREE.MeshStandardMaterial).isMeshStandardMaterial || (m as THREE.MeshLambertMaterial).isMeshLambertMaterial || (m as THREE.MeshPhongMaterial).isMeshPhongMaterial;
+        if (!lit || this.csmMats.has(m)) continue;
+        const orig = m.onBeforeCompile;
+        this.csmMats.set(m, orig);
+        csm.setupMaterial(m);
+        const csmFn = m.onBeforeCompile;
+        m.onBeforeCompile = (shader, renderer) => {
+          orig.call(m, shader, renderer);
+          csmFn.call(m, shader, renderer);
+        };
+        m.needsUpdate = true;
+      }
+    });
+  }
+
+  private disableCsm(): void {
+    if (!this.csm) return;
+    for (const [m, orig] of this.csmMats) {
+      m.onBeforeCompile = orig;
+      if (m.defines) {
+        delete m.defines.USE_CSM;
+        delete m.defines.CSM_CASCADES;
+        delete m.defines.CSM_FADE;
+      }
+      m.needsUpdate = true;
+    }
+    this.csmMats.clear();
+    this.csm.remove();
+    this.csm.dispose();
+    this.csm = null;
   }
 
   /** Light power of the nearest flame, used for audio crackle volume etc. */

@@ -6,7 +6,8 @@ import { generateTextures, scrawlTexture, type TextureLibrary } from './textures
 import { createMaterials, type MaterialLibrary } from './materials';
 import { buildTerrain, terrainHeight, type TerrainResult } from './terrain';
 import { StaticBuilder } from './builder';
-import { LightManager, tonguesFor, type FlameSource } from './lights';
+import { LightManager, MOON_OFFSET, tonguesFor, type FlameSource } from './lights';
+import { LightShafts } from './shafts';
 import { createPropSet, buildCage, makeBarrel, makeCrate, scatter, type Cage, type DynamicProp, type PropSet } from './props';
 import { FogWall, Pickup, Remnant, Shrine, ShortcutDoor, type Interactable } from './interactables';
 import { models, bakePosed } from '../entities/models';
@@ -24,6 +25,7 @@ import {
   MESSAGES,
   REGIONS,
   SHRINES,
+  SHAFTS,
   STRUCTURES,
   TERRAIN,
   type RegionDef,
@@ -63,12 +65,13 @@ export class World {
   heartFlame!: FlameSource;
   private heart!: THREE.Mesh;
   arenaPhase = 1;
+  shafts!: LightShafts;
   private t = 0;
 
   constructor(
     private scene: THREE.Scene,
     private physics: Physics,
-    private quality: Quality,
+    quality: Quality,
   ) {
     this.lights = new LightManager(scene, quality);
   }
@@ -83,15 +86,17 @@ export class World {
       await new Promise((r) => setTimeout(r, 0));
     };
     await tick(0.02, 'Weaving the fog');
-    this.tex = generateTextures(this.quality);
+    this.tex = generateTextures();
     this.mats = createMaterials(this.tex);
     await tick(0.18, 'Raising the land');
-    this.terrain = buildTerrain(this.physics, this.tex.ground, this.quality);
+    this.terrain = buildTerrain(this.physics, this.tex.ground);
     this.scene.add(this.terrain.mesh);
     this.builder = new StaticBuilder(this.physics, this.mats);
 
     await tick(0.35, 'Laying the stones');
     for (const s of STRUCTURES) this.builder.build(s);
+
+    this.shafts = new LightShafts(this.scene, SHAFTS, MOON_OFFSET.clone().negate());
 
     await tick(0.48, 'Lighting the candles');
     this.buildFlames();
@@ -181,7 +186,8 @@ export class World {
       p.setXYZ(i, v.x, v.y * 1.2, v.z);
     }
     geo.computeVertexNormals();
-    const mat = patchFog(new THREE.MeshStandardMaterial({ color: 0x3a1512, roughness: 0.55, emissive: 0x200402, emissiveIntensity: 1 }));
+    const fl = this.tex.flesh;
+    const mat = patchFog(new THREE.MeshStandardMaterial({ color: 0x8a3a30, map: fl.map, normalMap: fl.normalMap, roughnessMap: fl.roughnessMap, roughness: 0.9, emissive: 0x200402, emissiveIntensity: 1 }));
     this.heart = new THREE.Mesh(geo, mat);
     this.heart.position.copy(pos);
     this.heart.castShadow = true;

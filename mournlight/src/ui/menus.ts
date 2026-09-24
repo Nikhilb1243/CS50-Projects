@@ -1,5 +1,5 @@
 import { el, escapeHtml } from './dom';
-import { settings, type Quality } from '../core/settings';
+import { settings, type Settings } from '../core/settings';
 import type { MenuAction } from '../core/input';
 import { levelCost, levelOf, maxHealth, maxStamina, damageMultiplier, type Attributes } from '../data/stats';
 
@@ -278,23 +278,16 @@ export class Menus {
     range('Master volume', 'masterVolume', 0, 1, 0.05, (v) => `${Math.round(v * 100)}`);
     range('Effects volume', 'sfxVolume', 0, 1, 0.05, (v) => `${Math.round(v * 100)}`);
     range('Ambience volume', 'ambienceVolume', 0, 1, 0.05, (v) => `${Math.round(v * 100)}`);
-    {
+    const select = <K extends 'quality' | 'toneMapping'>(label: string, key: K, opts: [Settings[K], string][]): void => {
       const row = el('div', 'row', p);
-      el('span', '', row, 'Graphics quality');
+      el('span', '', row, label);
       const sel = el('select', '', el('span', 'v', row)) as HTMLSelectElement;
-      for (const q of ['low', 'medium', 'high']) {
-        const o = el('option', '', sel, q[0].toUpperCase() + q.slice(1));
-        (o as HTMLOptionElement).value = q;
-      }
-      const note = el('div', 'sub', p, '');
-      note.style.marginTop = '10px';
-      note.style.marginBottom = '0';
-      sel.addEventListener('change', () => {
-        settings.set('quality', sel.value as Quality);
-        note.textContent = 'Some quality changes apply after reloading the page.';
-      });
-      this.settingRows.push({ sync: () => (sel.value = settings.value.quality) });
-    }
+      for (const [v, name] of opts) (el('option', '', sel, name) as HTMLOptionElement).value = v;
+      sel.addEventListener('change', () => settings.set(key, sel.value as Settings[K]));
+      this.settingRows.push({ sync: () => (sel.value = settings.value[key]) });
+    };
+    select('Graphics quality', 'quality', [['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['ultra', 'Ultra']]);
+    select('Tone mapping', 'toneMapping', [['aces', 'ACES filmic'], ['agx', 'AgX']]);
     const m = el('div', 'menu', p);
     m.style.marginTop = '20px';
     this.button(m, 'Back', () => this.back());

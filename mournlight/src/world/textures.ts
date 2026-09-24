@@ -11,6 +11,8 @@ export interface TextureSet {
   map: THREE.Texture;
   normalMap: THREE.Texture;
   roughnessMap: THREE.Texture;
+  /** Optional: rusted metal is metallic only where the rust has not eaten it. */
+  metalnessMap?: THREE.Texture;
 }
 
 type Field = Float32Array;
@@ -412,11 +414,58 @@ export function roofTiles(n = 512, seed = 8): TextureSet {
 export function iron(n = 256, seed = 9): TextureSet {
   const noise = fbmField(n, 6, 5, seed);
   const rust = fbmField(n, 4, 4, seed + 1);
+  const pits = fbmField(n, 24, 2, seed + 2);
   const h = new Float32Array(n * n);
-  for (let i = 0; i < h.length; i++) h[i] = noise[i] * 0.4 + Math.max(0, rust[i] - 0.5);
+  const rk = (i: number): number => clamp01((rust[i] - 0.45) * 2.5);
+  for (let i = 0; i < h.length; i++) h[i] = noise[i] * 0.4 + Math.max(0, rust[i] - 0.5) - Math.max(0, pits[i] - 0.62) * 1.5;
   const c1 = hexToRgb(0x62646a);
   const r = hexToRgb(0x7a5238);
-  return finishSet(n, h, (i) => mix3(c1, r, clamp01((rust[i] - 0.45) * 2.5)), (i) => 0.45 + clamp01((rust[i] - 0.45) * 2.5) * 0.45, 1.5);
+  const r2 = hexToRgb(0x4a2a18);
+  const set = finishSet(n, h, (i) => mix3(c1, mix3(r, r2, clamp01(pits[i] * 1.4 - 0.3)), rk(i)), (i) => 0.4 + rk(i) * 0.5, 1.8);
+  set.metalnessMap = makeTex(
+    toCanvas(n, (i, out, o) => {
+      const v = (1 - rk(i)) * 0.85 * 255;
+      out[o] = out[o + 1] = out[o + 2] = v;
+      out[o + 3] = 255;
+    }),
+    false,
+  );
+  return set;
+}
+
+/** Wet, swollen, rotting planks: darker grain, slick where water pools in the seams. */
+export function wetWood(n = 256, seed = 12): TextureSet {
+  const grain = fbmField(n, 3, 5, seed);
+  const rot = fbmField(n, 5, 4, seed + 1);
+  const h = new Float32Array(n * n);
+  const plank = (i: number): number => {
+    const y = Math.floor(i / n);
+    return Math.abs(((y / n) * 6) % 1 - 0.5) > 0.47 ? 1 : 0;
+  };
+  for (let i = 0; i < h.length; i++) h[i] = grain[i] * 0.5 + rot[i] * 0.3 - plank(i) * 0.6;
+  const c = hexToRgb(0x3c2c1e);
+  const d = hexToRgb(0x1c1812);
+  const moss = hexToRgb(0x2a3220);
+  return finishSet(
+    n,
+    h,
+    (i) => mix3(mix3(c, d, grain[i] * 0.8 + plank(i) * 0.6), moss, clamp01((rot[i] - 0.6) * 3)),
+    (i) => 0.35 + grain[i] * 0.3 - plank(i) * 0.2,
+    2.2,
+  );
+}
+
+/** Pallid, veined flesh with a waxy sheen. */
+export function flesh(n = 256, seed = 13): TextureSet {
+  const base = fbmField(n, 4, 5, seed);
+  const veins = fbmField(n, 7, 3, seed + 1);
+  const h = new Float32Array(n * n);
+  const vein = (i: number): number => clamp01(1 - Math.abs(veins[i] - 0.5) * 18);
+  for (let i = 0; i < h.length; i++) h[i] = base[i] * 0.6 + vein(i) * 0.35;
+  const skin = hexToRgb(0x8a6a60);
+  const bruise = hexToRgb(0x4a2a34);
+  const vc = hexToRgb(0x3a1822);
+  return finishSet(n, h, (i) => mix3(mix3(skin, bruise, clamp01(base[i] * 1.6 - 0.6)), vc, vein(i) * 0.8), (i) => 0.42 - vein(i) * 0.15 + base[i] * 0.1, 2.4);
 }
 
 export function cloth(n = 256, seed = 10): TextureSet {
@@ -499,12 +548,15 @@ export interface TextureLibrary {
   roof: TextureSet;
   iron: TextureSet;
   cloth: TextureSet;
+  flesh: TextureSet;
+  wetWood: TextureSet;
   water: THREE.Texture;
 }
 
-export function generateTextures(quality: 'low' | 'medium' | 'high'): TextureLibrary {
-  const big = quality === 'low' ? 256 : 512;
-  const small = quality === 'low' ? 128 : 256;
+/** Texture detail is fixed (not tied to the quality preset) so presets can change at runtime. */
+export function generateTextures(): TextureLibrary {
+  const big = 512;
+  const small = 256;
   return {
     stone: stoneWall(big),
     flag: flagstone(big),
@@ -516,6 +568,8 @@ export function generateTextures(quality: 'low' | 'medium' | 'high'): TextureLib
     roof: roofTiles(big),
     iron: iron(small),
     cloth: cloth(small),
+    flesh: flesh(small),
+    wetWood: wetWood(small),
     water: waterNormal(small),
   };
 }

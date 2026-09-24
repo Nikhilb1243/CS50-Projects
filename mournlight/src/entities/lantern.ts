@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { buildLantern } from './models';
 import { clamp, damp, noise1 } from '../core/math';
 import { PLAYER_TUNING as T } from '../data/stats';
-import type { Quality } from '../core/settings';
+import { QUALITY_PROFILES, type Quality } from '../core/settings';
 
 /**
  * The Revenant's lantern: the only warm light the player carries. It burns
@@ -32,18 +32,25 @@ export class Lantern {
     this.pivot.add(this.visual.group);
     this.light = new THREE.PointLight(0xffa860, T.lanternIntensity, T.lanternRadius, 1.35);
     this.light.position.set(0, -0.17, 0);
-    this.light.castShadow = quality === 'high';
-    if (this.light.castShadow) {
-      this.light.shadow.mapSize.set(512, 512);
-      this.light.shadow.camera.near = 0.2;
-      this.light.shadow.camera.far = T.lanternRadius;
-      this.light.shadow.bias = -0.002;
-    }
+    this.light.shadow.mapSize.set(512, 512);
+    this.light.shadow.camera.near = 0.2;
+    this.light.shadow.camera.far = T.lanternRadius;
+    this.light.shadow.bias = -0.002;
+    this.setShadow(QUALITY_PROFILES[quality].lanternShadow);
     this.visual.group.add(this.light);
     // a faint fill so the player's own body reads even when shuttered
     this.glowLight = new THREE.PointLight(0x6d7a90, 0.0, 3.5, 2);
     this.glowLight.position.set(0, 0.4, 0);
     this.pivot.add(this.glowLight);
+  }
+
+  setShadow(on: boolean): void {
+    if (this.light.castShadow === on) return;
+    this.light.castShadow = on;
+    if (!on) {
+      this.light.shadow.map?.dispose();
+      this.light.shadow.map = null;
+    }
   }
 
   attach(socket: THREE.Object3D): void {

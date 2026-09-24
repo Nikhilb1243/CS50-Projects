@@ -328,7 +328,7 @@ export class StaticBuilder {
     // stilts
     if (s.stilts) {
       for (const [x, z] of [[-hw + 0.2, -hd + 0.2], [hw - 0.2, -hd + 0.2], [-hw + 0.2, hd - 0.2], [hw - 0.2, hd - 0.2], [0, 0]]) {
-        B([x, -s.stilts / 2, z], [0.25, s.stilts, 0.25], 'wood', 0, 0, false);
+        B([x, -s.stilts / 2, z], [0.25, s.stilts, 0.25], 'wetwood', 0, 0, false);
       }
     }
   }
