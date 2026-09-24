@@ -22,6 +22,7 @@ export interface HudState {
   arrows: number | null;
   aiming: boolean;
   draw: number;
+  objectives: { title: string; main: boolean }[];
 }
 
 class Bar {
@@ -72,6 +73,7 @@ export class Hud {
   private ult: Bar;
   private weaponEl: HTMLDivElement;
   private crosshair: HTMLDivElement;
+  private tracker: HTMLDivElement;
   private boss: HTMLDivElement;
   private bossName: HTMLDivElement;
   private bossBar: Bar;
@@ -110,6 +112,7 @@ export class Hud {
     this.reticle = el('div', 'reticle', this.root);
     this.weaponEl = el('div', 'weapon', bl);
     this.crosshair = el('div', 'crosshair', this.root);
+    this.tracker = el('div', 'tracker', this.root);
     el('i', '', this.crosshair);
     this.boss = el('div', 'boss', this.root);
     this.bossName = el('div', 'name', this.boss);
@@ -142,6 +145,13 @@ export class Hud {
     if (this.changed('ultReady', s.ultReady)) this.ult.root.classList.toggle('ready', s.ultReady);
     const wtxt = s.arrows === null ? s.weapon : `${s.weapon} · ${s.arrows} arrows`;
     if (this.changed('weapon', wtxt)) this.weaponEl.textContent = wtxt;
+    const ok = s.objectives.map((o) => (o.main ? '*' : '') + o.title).join('|');
+    if (this.changed('objectives', ok)) {
+      this.tracker.innerHTML = s.objectives.map((o) => `<div class="${o.main ? 'main' : 'opt'}">${o.main ? '\u25c6' : '\u25c7'} ${escapeHtml(o.title)}</div>`).join('');
+      this.tracker.classList.remove('flash');
+      void this.tracker.offsetWidth;
+      this.tracker.classList.add('flash');
+    }
     if (this.changed('aiming', s.aiming)) this.crosshair.classList.toggle('on', s.aiming);
     const dr = Math.round(s.draw * 20);
     if (this.changed('draw', dr)) this.crosshair.style.setProperty('--draw', String(1 - dr / 20));
@@ -201,9 +211,9 @@ export class Hud {
     this.timed('banner', this.bannerEl, opts.dur ?? 3.5);
   }
 
-  region(name: string): void {
-    this.regionEl.textContent = name;
-    this.timed('region', this.regionEl, 3.2);
+  region(name: string, sub = ''): void {
+    this.regionEl.innerHTML = `<div class="rn">${escapeHtml(name)}</div>${sub ? `<div class="rs">${escapeHtml(sub)}</div>` : ''}`;
+    this.timed('region', this.regionEl, sub ? 5 : 3.2);
   }
 
   toast(title: string, desc: string, dur = 4): void {

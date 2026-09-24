@@ -3,7 +3,7 @@ import { settings, type Settings } from '../core/settings';
 import type { MenuAction } from '../core/input';
 import { levelCost, levelOf, maxHealth, maxStamina, damageMultiplier, type Attributes } from '../data/stats';
 
-export type ScreenName = 'arms' | 'loading' | 'title' | 'pause' | 'settings' | 'controls' | 'death' | 'shrine' | 'levelup' | 'travel' | 'intro' | 'victory';
+export type ScreenName = 'journal' | 'map' | 'arms' | 'loading' | 'title' | 'pause' | 'settings' | 'controls' | 'death' | 'shrine' | 'levelup' | 'travel' | 'intro' | 'victory';
 
 export interface MenuCallbacks {
   newGame(): void;
@@ -16,6 +16,9 @@ export interface MenuCallbacks {
   click(): void;
   move(): void;
   arms(): ArmInfo[];
+  journal(): { objectives: { title: string; detail: string; done: boolean; main: boolean }[]; notes: { title: string; text: string }[] };
+  mapCanvas(): HTMLCanvasElement;
+  drawMap(): void;
   equip(id: string): void;
 }
 
@@ -51,6 +54,8 @@ const CONTROLS: [string, string, string][] = [
   ['Interact / rest', 'E', 'Y'],
   ['Shutter lantern', 'F', 'LT / D-pad up'],
   ['Swap armament', 'X', 'D-pad down'],
+  ['Journal', 'J', 'Back (hold)'],
+  ['Map', 'M', ''],
   ['Ultimate (meter full)', 'V', 'Back / View'],
   ['Bow: draw / aim', 'Hold left mouse / right mouse', 'Hold RB / LB'],
   ['Pause', 'Esc', 'Start'],
@@ -89,6 +94,48 @@ export class Menus {
     this.buildTravel();
     this.buildVictory();
     this.buildArms();
+    this.buildJournal();
+    this.buildMap();
+  }
+
+  private journalBody!: HTMLDivElement;
+  private buildJournal(): void {
+    const s = this.screen('journal', 'dim');
+    const p = el('div', 'panel journal', s);
+    el('h2', '', p, 'Journal');
+    this.journalBody = el('div', 'journal-body', p);
+    const m = el('div', 'menu', p);
+    this.button(m, 'Close', () => this.back());
+  }
+
+  private renderJournal(): void {
+    const j = this.cb.journal();
+    const b = this.journalBody;
+    b.innerHTML = '';
+    el('div', 'jh', b, 'Paths');
+    for (const o of j.objectives) {
+      const row = el('div', `jo${o.done ? ' done' : ''}${o.main ? ' main' : ''}`, b);
+      el('div', 't', row, escapeHtml(`${o.done ? '\u2713 ' : o.main ? '\u25c6 ' : '\u25c7 '}${o.title}`));
+      if (!o.done) el('div', 'd', row, escapeHtml(o.detail));
+    }
+    el('div', 'jh', b, 'Words of the dead');
+    if (!j.notes.length) el('div', 'd', b, 'You have found no notes yet. The dead leave them where they fell.');
+    for (const n of j.notes) {
+      const row = el('div', 'jn', b);
+      el('div', 't', row, escapeHtml(n.title));
+      el('div', 'd', row, escapeHtml(n.text));
+    }
+  }
+
+  private mapSlot!: HTMLDivElement;
+  private buildMap(): void {
+    const s = this.screen('map', 'dim');
+    const p = el('div', 'panel map-panel', s);
+    el('h2', '', p, 'Vael');
+    el('div', 'sub', p, 'Only what you have walked is drawn. \u25b2 candle shrine  \u25c6 path  \u2715 a great enemy');
+    this.mapSlot = el('div', '', p);
+    const m = el('div', 'menu', p);
+    this.button(m, 'Close', () => this.back());
   }
 
   private armsList!: HTMLDivElement;
@@ -144,6 +191,11 @@ export class Menus {
     if (name === 'levelup') this.renderLevelUp();
     if (name === 'travel') this.renderTravel();
     if (name === 'arms') this.renderArms();
+    if (name === 'journal') this.renderJournal();
+    if (name === 'map') {
+      if (!this.mapSlot.firstChild) this.mapSlot.appendChild(this.cb.mapCanvas());
+      this.cb.drawMap();
+    }
     if (name === 'shrine') this.renderShrine();
     if (name === 'settings') this.syncSettings();
     // focus the first control
@@ -159,7 +211,7 @@ export class Menus {
       const stack = this.backStack;
       this.show(prev, false);
       this.backStack = stack;
-    } else if (this.current === 'pause') this.cb.resume();
+    } else if (this.current === 'pause' || this.current === 'journal' || this.current === 'map') this.cb.resume();
     else if (this.current === 'shrine') this.cb.leaveShrine();
   }
 

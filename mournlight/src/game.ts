@@ -33,6 +33,8 @@ import type { Boss } from './ai/boss';
 import { ENEMIES_LAYOUT, BOSS, PLAYER_START, REGIONS, HINTS, type RegionDef } from './world/layout';
 import { ITEM_INFO, type Interactable, type Pickup, type Shrine } from './world/interactables';
 import { Hud } from './ui/hud';
+import { MapView, type MapMarker } from './ui/map';
+import { NOTES, OBJECTIVES, ObjectiveTracker, type GameFacts } from './world/objectives';
 import { Menus } from './ui/menus';
 import { DebugOverlay } from './ui/debug';
 import { START_ATTRIBUTES } from './data/stats';
@@ -55,6 +57,15 @@ const REGION_LOOK: Record<string, { wet: number; env: number; exposure: number }
   arena: { wet: 0.25, env: 0.35, exposure: 1 },
 };
 const DEFAULT_LOOK = { wet: 0.3, env: 0.35, exposure: 1 };
+/** Title-card subtitles shown the first time a region is entered. */
+const REGION_SUBTITLES: Record<string, string> = {
+  crypt: 'where the first wick was lit, and the last was buried',
+  road: 'the dead walked it once; now only the fog does',
+  village: 'the tide came in and forgot to leave',
+  forest: 'every bough bears fruit of rope',
+  cathedral: 'they prayed until the candles ran out',
+  arena: 'the god fell here, and did not stop bleeding',
+};
 
 export class Game {
   private renderer: THREE.WebGLRenderer;
@@ -111,6 +122,14 @@ export class Game {
   private envTex: THREE.Texture | null = null;
   private appliedQuality: Quality | null = null;
   private uiRoot: HTMLElement;
+  private notesRead = new Set<string>();
+  private regionsVisited = new Set<string>();
+  private facts!: GameFacts;
+  private objectives!: ObjectiveTracker;
+  private mapView!: MapView;
+  private noteMeshes: { id: string; pos: THREE.Vector3; mesh: THREE.Mesh }[] = [];
+  private guideT = 0;
+  private objT = 0;
 
   constructor(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     this.uiRoot = uiRoot;
@@ -152,6 +171,12 @@ export class Game {
           return { id, name: w.name, desc: w.desc, stats: w.stats, ult: w.ultimateName, ultDesc: w.ultimateDesc, owned: this.player.progress.weapons.includes(id), equipped: this.player.progress.weapon === id };
         }),
       equip: (id) => this.player.equip(id as WeaponId),
+      journal: () => ({
+        objectives: OBJECTIVES.filter((o) => o.main ? true : this.regionsVisited.has(o.region)).map((o) => ({ title: o.title, detail: o.detail, done: this.objectives.done.has(o.id), main: o.main })),
+        notes: NOTES.filter((n) => this.notesRead.has(n.id)).map((n) => ({ title: n.title, text: n.text })),
+      }),
+      mapCanvas: () => this.mapView.canvas,
+      drawMap: () => this.drawMap(),
     });
     this.menus.show('loading');
     window.addEventListener('resize', () => this.onResize());
@@ -241,6 +266,7 @@ export class Game {
     this.boss.onDefeated = () => this.onBossDefeated();
     for (const d of this.world.dynamics) this.combat.knockables.push(d);
     this.horror = new HorrorDirector(this.ctx);
+    this.initObjectives();
     this.debugOverlay = new DebugOverlay(
       this.uiRoot,
       this.debug,
@@ -337,6 +363,8 @@ export class Game {
     this.ambience.start();
     this.menus.show(null);
     this.hud.setVisible(true);
+    this.syncFacts();
+    this.objectives.evaluate(true);
     this.mode = 'playing';
     this.input.gameplayEnabled = true;
     this.input.clearAll();
@@ -361,7 +389,8 @@ export class Game {
     this.player.startRest();
     window.setTimeout(() => {
       this.player.endRest();
-      this.hud.region(this.region.name);
+      this.hud.region(this.region.name, REGION_SUBTITLES[this.region.id]);
+      this.regionsVisited.add(this.region.id);
     }, 2200);
     this.lastRegionBanner.set('crypt', performance.now());
   }
@@ -381,6 +410,12 @@ export class Game {
     const weapons = (s.weapons ?? ['longsword']) as WeaponId[];
     p.progress = { attrs: { ...s.attrs }, marrow: s.marrow, draughtsMax: s.draughtsMax, dmgBonus: s.dmgBonus, fuelMax: s.fuelMax, weapons, weapon: (s.weapon as WeaponId) ?? 'longsword', arrows: s.arrows ?? BOW.maxArrows };
     p.equip(p.progress.weapon);
+    this.notesRead = new Set(s.notesRead ?? []);
+    this.regionsVisited = new Set(s.regionsVisited ?? []);
+    this.facts.notesRead = this.notesRead;
+    this.facts.regionsVisited = this.regionsVisited;
+    this.mapView.load(s.explored);
+    for (const n of this.noteMeshes) n.mesh.visible = !this.notesRead.has(n.id);
     p.recalcStats(true);
     p.lantern.drainMult = s.fuelMax > PLAYER_TUNING.lanternFuelMax ? 0.8 : 1;
     for (const sh of this.world.shrines) if (s.shrinesLit.includes(sh.def.id)) sh.kindle();
@@ -431,6 +466,9 @@ export class Game {
       weapons: [...p.progress.weapons],
       weapon: p.progress.weapon,
       arrows: p.progress.arrows,
+      notesRead: [...this.notesRead],
+      regionsVisited: [...this.regionsVisited],
+      explored: this.mapView.serialize(),
     });
   }
 
@@ -739,6 +777,7 @@ export class Game {
 
   private onBossDefeated(): void {
     this.bossDefeated = true;
+    this.facts.bossesDefeated.add('oskeline');
     this.horror.bossFight = false;
     this.world.fogWall.dissolve();
     this.world.setArenaPhase(3);
@@ -777,6 +816,7 @@ export class Game {
     if (this.mode === 'playing') {
       this.playTime += dt;
       this.gameplayChecks();
+      this.objectiveStep(dt);
     }
     if (this.mode === 'cinematic') {
       this.cinematicT += dt;
@@ -846,14 +886,119 @@ export class Game {
       this.region = r;
       const last = this.lastRegionBanner.get(r.id) ?? -1e9;
       if (this.mode === 'playing' && performance.now() - last > 90000) {
-        this.hud.region(r.name);
+        const first = !this.regionsVisited.has(r.id);
+        this.hud.region(r.name, first ? REGION_SUBTITLES[r.id] ?? '' : '');
         this.lastRegionBanner.set(r.id, performance.now());
       }
+    }
+    if (this.mode === 'playing' && !this.regionsVisited.has(r.id)) {
+      this.regionsVisited.add(r.id);
+      this.objectives.progressed();
     }
     this.ambience.setRegion(r.drone);
     this.audio.setReverb(r.reverb);
     this.post.setLut(regionLut(r.id));
     this.world.lights.setRegionLighting(r.moon * (this.world.arenaPhase === 2 && r.id === 'arena' ? 0.2 : 1), r.ambient);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Objectives, guidance, notes, map
+  // ---------------------------------------------------------------------------
+  private initObjectives(): void {
+    this.facts = {
+      shrinesLit: new Set(),
+      itemsTaken: this.itemsTaken,
+      regionsVisited: this.regionsVisited,
+      doorsOpen: new Set(),
+      bossesDefeated: new Set(),
+      notesRead: this.notesRead,
+    };
+    this.objectives = new ObjectiveTracker(this.facts);
+    this.objectives.onComplete = (o) => {
+      this.hud.toast(o.main ? 'Path fulfilled' : 'Deed done', o.title, 3.5);
+      this.audio.play('pickup', { volume: 0.5, rate: 0.7 });
+      const next = this.objectives.current;
+      if (o.main && next) window.setTimeout(() => this.hud.message(next.title, 3.5), 3800);
+    };
+    const tints: Record<string, string> = { crypt: '#2a2824', road: '#2c3034', village: '#1e2c2e', forest: '#232a20', cathedral: '#34302a', arena: '#361c1a' };
+    this.mapView = new MapView((x, z) => tints[this.world.regionAt(new THREE.Vector3(x, 0, z)).id] ?? '#26282a');
+    const paper = new THREE.MeshStandardMaterial({ color: 0xd8ccb0, roughness: 0.9, emissive: 0x2a2418, side: THREE.DoubleSide });
+    for (const n of NOTES) {
+      const pos = new THREE.Vector3(...n.p);
+      const g = this.physics.groundHeight(pos.x, pos.z, pos.y + 1.5, 6);
+      if (g !== null) pos.y = g;
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.28, 0.36), paper);
+      mesh.rotation.set(-Math.PI / 2, 0, Math.random() * 6);
+      mesh.position.copy(pos).setY(pos.y + 0.02);
+      mesh.receiveShadow = true;
+      this.scene.add(mesh);
+      this.noteMeshes.push({ id: n.id, pos, mesh });
+    }
+  }
+
+  private syncFacts(): void {
+    this.facts.shrinesLit.clear();
+    for (const s of this.world.shrines) if (s.lit) this.facts.shrinesLit.add(s.def.id);
+    this.facts.doorsOpen.clear();
+    for (const d of this.world.doors) if (d.open) this.facts.doorsOpen.add(d.def.id);
+    if (this.bossDefeated) this.facts.bossesDefeated.add('oskeline');
+  }
+
+  private objectiveStep(dt: number): void {
+    this.objT -= dt;
+    if (this.objT > 0) return;
+    this.objT = 0.5;
+    this.syncFacts();
+    this.objectives.evaluate();
+    const p = this.player.pos;
+    this.mapView.reveal(p.x, p.z);
+    for (const n of this.noteMeshes) {
+      if (this.notesRead.has(n.id) || n.pos.distanceTo(p) > 1.8) continue;
+      const def = NOTES.find((d) => d.id === n.id)!;
+      this.notesRead.add(n.id);
+      n.mesh.visible = false;
+      this.objectives.progressed();
+      this.hud.toast(def.title, def.text, 9);
+      this.audio.play('ui_move', { volume: 0.6, rate: 0.6 });
+      this.save();
+    }
+    const hint = this.objectives.update(0.5, this.playTime);
+    if (hint) this.hud.message(hint, 7);
+  }
+
+  /** Lantern lean and path wisps toward the current main objective. */
+  private guidance(dt: number): void {
+    const p = this.player;
+    const dir = this.objectives.direction(p.pos, this.tmp);
+    p.lantern.lean = dir && p.lantern.lit ? dir.clone() : null;
+    for (const n of this.noteMeshes) if (n.mesh.visible && n.pos.distanceToSquared(p.pos) < 400 && Math.random() < dt * 1.5) this.gpu.embers(n.pos.clone().setY(n.pos.y + 0.1), 1, 0xd8d0c0);
+    this.guideT -= dt;
+    if (!dir || this.guideT > 0 || !p.lantern.lit || this.boss.fightActive) return;
+    this.guideT = 1.6;
+    const target = new THREE.Vector3(...this.objectives.current!.target);
+    const dist = Math.hypot(target.x - p.pos.x, target.z - p.pos.z);
+    for (let d = 3; d < Math.min(14, dist - 2); d += 2.2) {
+      const q = p.pos.clone().addScaledVector(dir, d);
+      const g = this.physics.groundHeight(q.x, q.z, p.pos.y + 2.5, 6);
+      if (g === null) break;
+      q.y = g + 0.35;
+      this.gpu.emit(this.gpu.add, { pos: q, count: 2, jitter: 0.2, vel: new THREE.Vector3(0, 0.2, 0), spread: 0.8, speed: [0.05, 0.25], life: [1.4, 2.2], size: [0.05, 0.09], color: 0x9fc4ff, alpha: 0.45, fadeIn: 0.3, drag: 0.5 });
+    }
+  }
+
+  private drawMap(): void {
+    const m: MapMarker[] = [];
+    for (const s of this.world.shrines) m.push({ x: s.pos.x, z: s.pos.z, kind: s.lit ? 'shrine-lit' : 'shrine', label: s.lit ? s.def.name : undefined });
+    if (!this.bossDefeated) m.push({ x: this.boss.pos.x, z: this.boss.pos.z, kind: 'boss' });
+    for (const o of this.objectives.tracked(this.region.id)) m.push({ x: o.target[0], z: o.target[2], kind: o.main ? 'objective-main' : 'objective', label: o.main ? o.title : undefined });
+    for (const n of this.noteMeshes) if (!this.notesRead.has(n.id)) m.push({ x: n.pos.x, z: n.pos.z, kind: 'note' });
+    this.mapView.draw({ x: this.player.pos.x, z: this.player.pos.z, yaw: this.player.yaw }, m);
+  }
+
+  private openScreen(name: 'journal' | 'map'): void {
+    this.mapView.reveal(this.player.pos.x, this.player.pos.z);
+    this.pause();
+    this.menus.show(name);
   }
 
   private applyPixelRatio(): void {
@@ -918,6 +1063,9 @@ export class Game {
       // ignore the echo so the game does not immediately resume.
       else if (this.mode === 'paused' && performance.now() - this.pausedAt > 400) this.resume();
     }
+    if (this.mode === 'playing' && this.input.consume('journal')) this.openScreen('journal');
+    if (this.mode === 'playing' && this.input.consume('map')) this.openScreen('map');
+    if (this.mode === 'playing') this.guidance(realDt);
     let a;
     while ((a = this.input.consumeMenu())) {
       if (this.mode === 'title' && this.menus.current === 'title' && a === 'back') continue;
@@ -1093,6 +1241,7 @@ export class Game {
       arrows: p.progress.weapon === 'bow' ? p.progress.arrows : null,
       aiming: p.aiming,
       draw: p.draw,
+      objectives: this.objectives.tracked(this.region.id).map((o) => ({ title: o.title, main: o.main })),
     });
   }
 

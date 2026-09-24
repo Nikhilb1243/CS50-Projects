@@ -18,6 +18,9 @@ export interface SaveData {
   weapons?: string[];
   weapon?: string;
   arrows?: number;
+  notesRead?: string[];
+  regionsVisited?: string[];
+  explored?: string;
 }
 
 const KEY = 'mournlight.save.v1';

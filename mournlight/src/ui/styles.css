@@ -689,3 +689,20 @@ select {
 .crosshair.on { opacity: 1; }
 .crosshair::before { content: ''; position: absolute; inset: calc(var(--draw) * 9px); border: 1px solid rgba(230, 220, 200, 0.7); border-radius: 50%; transition: inset 0.05s; }
 .crosshair i { position: absolute; left: 14px; top: 14px; width: 2px; height: 2px; background: #f0e6d0; border-radius: 1px; }
+
+/* ---- objectives / journal / map ---- */
+.tracker { position: absolute; right: 28px; top: 26px; text-align: right; font-size: 13px; line-height: 1.6; color: rgba(215, 205, 185, 0.8); text-shadow: 0 1px 3px #000; max-width: 340px; }
+.tracker .main { color: #e8dcc0; letter-spacing: 0.04em; }
+.tracker .opt { color: rgba(180, 172, 158, 0.6); font-size: 12px; }
+.tracker.flash { animation: trackflash 1.6s ease-out; }
+@keyframes trackflash { 0% { opacity: 0; transform: translateX(12px); } 30% { opacity: 1; transform: none; } }
+.banner.region .rn { font-size: inherit; }
+.banner.region .rs { font-size: 15px; letter-spacing: 0.25em; opacity: 0.65; margin-top: 10px; font-style: italic; text-transform: none; }
+.journal { max-width: 640px; }
+.journal-body { max-height: 60vh; overflow-y: auto; text-align: left; padding-right: 8px; }
+.journal-body .jh { margin: 16px 0 6px; font-size: 12px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--ember-hot, #e7a24a); }
+.journal-body .t { color: #e0d6c0; }
+.journal-body .d { color: rgba(190, 182, 168, 0.75); font-size: 13px; margin: 2px 0 8px 18px; font-style: italic; }
+.journal-body .done .t { color: rgba(160, 152, 140, 0.55); text-decoration: line-through; }
+.map-panel { max-width: 92vw; }
+.map-canvas { display: block; margin: 10px auto; max-width: 80vw; max-height: 64vh; image-rendering: pixelated; border: 1px solid rgba(200, 190, 170, 0.2); }

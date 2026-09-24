@@ -85,3 +85,10 @@ pmndrs postprocessing + Web Audio), everything original (names, lore, enemies, d
 - `fx/trails.ts`: swing ribbons. `LightManager.flash()`: transient lights borrow the fixed pool (no extra lights).
 - Enemy bleed build-up (`Enemy.addBleed`). Weapons are pickups (bow: crypt near the alcove; daggers: Brinemoor house; slab: Gallowwood hollow); arrows refill at shrines; weapons/arrows saved. Pause menu -> Armaments page to equip.
 - Dev: `?arms&weapon=bow&ult`, `window.__game`.
+
+### Milestone 3: done (session 1)
+- `world/objectives.ts`: `OBJECTIVES` (main chain: First Wick -> Brinemoor Chapel -> Gallowwood Wayside -> Last Vigil -> Wick-Mother; optional deeds per region), evaluated from game facts every 0.5 s by `ObjectiveTracker` (no scripted triggers). Idle hint after 4 min without progress (then every 3 min). `NOTES`: notes of the dead (read by walking up to them) with secret and boss-weakness hints.
+- HUD tracker (top right, main + nearby optional), toast on completion, title cards with a subtitle on first entry to a region (`REGION_SUBTITLES` in game.ts).
+- Journal (J) and map (M) screens in `ui/menus.ts`; `ui/map.ts` fog-of-war map (4 m cells revealed around the player, region tints, shrines, boss, objectives, notes, player arrow). Explored mask, notes and visited regions are saved.
+- Diegetic guidance: the lantern flame leans toward the main objective (`Lantern.lean`), faint blue wisps appear along the ground in that direction (skipped during boss fights).
+- Left for M5: "beating a boss unlocks the next region" (the new regions don't exist yet). Wisps follow the straight-line direction, not a navmesh path.

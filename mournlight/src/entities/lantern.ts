@@ -25,6 +25,9 @@ export class Lantern {
   private tmp = new THREE.Vector3();
   private inv = new THREE.Quaternion();
   private brightness = 1;
+  /** World direction the flame leans toward (the current objective), or null. */
+  lean: THREE.Vector3 | null = null;
+  private leanQ = new THREE.Quaternion();
   /** Flame visibility for other systems (0..1). */
   level = 1;
 
@@ -96,6 +99,15 @@ export class Lantern {
     const flame = this.visual.flame;
     flame.visible = this.brightness > 0.05;
     flame.scale.set(1, 0.7 + flick * 0.5, 1).multiplyScalar(Math.max(0.05, this.brightness));
+    // The flame leans toward where the Revenant must go, as if drawn by a draught.
+    if (flame.parent) {
+      flame.parent.getWorldQuaternion(this.inv).invert();
+      const up = this.tmp.set(0, 1, 0);
+      if (this.lean) up.addScaledVector(this.lean, 0.55 + 0.1 * Math.sin(t * 3)).normalize();
+      up.applyQuaternion(this.inv);
+      this.leanQ.setFromUnitVectors(new THREE.Vector3(0, 1, 0), up);
+      flame.quaternion.slerp(this.leanQ, 1 - Math.exp(-4 * dt));
+    }
     const glassMat = this.visual.glass.material as THREE.MeshStandardMaterial;
     glassMat.emissiveIntensity = 0.15 + 1.6 * this.brightness * flick;
 
