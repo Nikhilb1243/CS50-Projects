@@ -3,7 +3,7 @@ import { settings, type Settings } from '../core/settings';
 import type { MenuAction } from '../core/input';
 import { levelCost, levelOf, maxHealth, maxStamina, damageMultiplier, type Attributes } from '../data/stats';
 
-export type ScreenName = 'journal' | 'map' | 'arms' | 'loading' | 'title' | 'pause' | 'settings' | 'controls' | 'death' | 'shrine' | 'levelup' | 'travel' | 'intro' | 'victory';
+export type ScreenName = 'journal' | 'map' | 'arms' | 'loading' | 'title' | 'pause' | 'settings' | 'controls' | 'death' | 'shrine' | 'levelup' | 'travel' | 'intro' | 'victory' | 'cleared';
 
 export interface MenuCallbacks {
   newGame(): void;
@@ -20,6 +20,7 @@ export interface MenuCallbacks {
   mapCanvas(): HTMLCanvasElement;
   drawMap(): void;
   equip(id: string): void;
+  whereToGo(): void;
 }
 
 export interface ArmInfo {
@@ -86,6 +87,7 @@ export class Menus {
     this.buildTitle();
     this.buildIntro();
     this.buildPause();
+    this.buildCleared();
     this.buildSettings();
     this.buildControls();
     this.buildDeath();
@@ -327,6 +329,7 @@ export class Menus {
     el('div', 'title-sub', s, 'Paused');
     const m = el('div', 'menu', s);
     this.button(m, 'Resume', () => this.cb.resume());
+    this.button(m, 'Where do I go?', () => this.cb.whereToGo());
     this.button(m, 'Armaments', () => this.show('arms', true));
     this.button(m, 'Settings', () => this.show('settings', true));
     this.button(m, 'Controls', () => this.show('controls', true));
@@ -590,6 +593,33 @@ export class Menus {
     el('div', 'lore', s, 'The fog does not lift. But somewhere beneath the drowned bells, a flame steadies.').style.marginTop = '30px';
     const m = el('div', 'menu', s);
     this.button(m, 'Walk on', () => this.cb.resume());
+  }
+
+  private clearedTitle!: HTMLDivElement;
+  private clearedName!: HTMLDivElement;
+  private clearedStats!: HTMLDivElement;
+  private clearedNext!: HTMLDivElement;
+
+  private buildCleared(): void {
+    const s = this.screen('cleared');
+    s.style.background = 'radial-gradient(ellipse at center, rgba(40,30,10,0.18), rgba(0,0,0,0.82))';
+    this.clearedTitle = el('div', 'death-text victory', s, 'REGION CLEARED');
+    this.clearedTitle.style.color = '#e8c070';
+    this.clearedTitle.style.fontSize = 'clamp(26px, 3.8vw, 52px)';
+    this.clearedName = el('div', 'title-sub', s);
+    this.clearedStats = el('div', 'cleared-stats', s);
+    this.clearedNext = el('div', 'lore', s);
+    const m = el('div', 'menu', s);
+    this.button(m, 'Walk on', () => this.cb.resume());
+  }
+
+  showCleared(d: { name: string; rows: [string, string][]; next: string | null }): void {
+    this.clearedName.textContent = d.name;
+    this.clearedStats.innerHTML = d.rows.map(([k, v]) => `<span>${escapeHtml(k)}</span><b>${escapeHtml(v)}</b>`).join('');
+    this.clearedNext.textContent = d.next ? `The way opens: ${d.next}` : 'The fog has nothing left to hide here.';
+    this.clearedTitle.classList.remove('show');
+    this.show('cleared');
+    requestAnimationFrame(() => requestAnimationFrame(() => this.clearedTitle.classList.add('show')));
   }
 
   showVictory(): void {

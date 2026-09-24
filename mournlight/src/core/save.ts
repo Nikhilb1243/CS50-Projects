@@ -22,6 +22,7 @@ export interface SaveData {
   regionsVisited?: string[];
   explored?: string;
   deepBosses?: string[];
+  regions?: import('../world/progression').LedgerSave;
 }
 
 const KEY = 'mournlight.save.v1';

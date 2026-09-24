@@ -15,6 +15,7 @@ import { Particles } from './fx/particles';
 import { PostFX } from './fx/post';
 import { installFogChunks, fogUniforms, rimUniforms } from './fx/fog';
 import { regionLighting } from './data/lighting';
+import { RegionLedger, TipBook, BOSS_HINTS, REGION_CLEAR, formatTime } from './world/progression';
 import { HorrorDirector } from './fx/horror';
 import { Sky } from './fx/sky';
 import { GpuParticles } from './fx/gpuparticles';
@@ -128,6 +129,14 @@ export class Game {
   private mapView!: MapView;
   private noteMeshes: { id: string; pos: THREE.Vector3; mesh: THREE.Mesh }[] = [];
   private guideT = 0;
+  /** "Where do I go?" and region clears light a longer, brighter trail for a while. */
+  private guideBoost = 0;
+  private ledger = new RegionLedger();
+  private tips = new TipBook();
+  private bossDeaths = new Map<string, number>();
+  private clearQueue: string[] = [];
+  private clearDelay = 0;
+  private markerT = 0;
   private deepBosses: DeepBoss[] = [];
   private cineBoss: DeepBoss | null = null;
   private lightningT = 8;
@@ -161,6 +170,7 @@ export class Game {
       newGame: () => this.newGame(),
       continueGame: () => this.continueGame(),
       resume: () => this.resume(),
+      whereToGo: () => this.whereToGo(),
       quitToTitle: () => this.quitToTitle(),
       levelUp: (a, cost) => this.applyLevelUp(a, cost),
       travel: (id) => this.travel(id),
@@ -404,7 +414,10 @@ export class Game {
   }
 
   private bindEvents(): void {
-    events.on('enemy:killed', (e) => this.addMarrow(e.marrow));
+    events.on('enemy:killed', (e) => {
+      this.addMarrow(e.marrow);
+      this.ledger.get(this.region.id).kills++;
+    });
     events.on('player:died', () => this.onPlayerDied());
     events.on('player:hurt', () => {
       this.hurtK = 1;
@@ -421,6 +434,8 @@ export class Game {
     this.hud.setVisible(true);
     this.syncFacts();
     this.objectives.evaluate(true);
+    // regions finished in an earlier session must not replay their Region Cleared screen
+    this.ledger.markCleared(this.objectives.done);
     this.region = this.world.regionAt(this.player.pos);
     this.mode = 'playing';
     this.input.gameplayEnabled = true;
@@ -437,6 +452,8 @@ export class Game {
     p.equip('longsword');
     p.ult = 0;
     p.recalcStats(true);
+    this.ledger.load(undefined);
+    this.bossDeaths.clear();
     p.respawn(new THREE.Vector3(...PLAYER_START.p), PLAYER_START.yaw);
     this.fadeAmt = 1;
     this.fadeTarget = 0;
@@ -498,6 +515,7 @@ export class Game {
     if (s.remnant) this.world.remnant.place(new THREE.Vector3(...s.remnant.p), s.remnant.amount);
     this.playTime = s.playTime;
     this.deaths = s.deaths;
+    this.ledger.load(s.regions);
     const { pos, yaw } = this.shrineSpawn(this.lastShrine);
     p.respawn(pos, yaw);
     this.fadeAmt = 1;
@@ -529,6 +547,7 @@ export class Game {
       regionsVisited: [...this.regionsVisited],
       explored: this.mapView.serialize(),
       deepBosses: this.deepBosses.filter((b) => !b.alive).map((b) => b.id),
+      regions: this.ledger.serialize(),
     });
   }
 
@@ -544,7 +563,8 @@ export class Game {
   }
 
   private resume(): void {
-    if (this.menus.current === 'victory') {
+    if (this.menus.current === 'victory' || this.menus.current === 'cleared') {
+      if (this.menus.current === 'cleared') this.guideBoost = 10;
       this.menus.show(null);
       this.hud.setVisible(true);
       this.mode = 'playing';
@@ -581,8 +601,17 @@ export class Game {
   // ---------------------------------------------------------------------------
   private onPlayerDied(): void {
     this.deaths++;
+    this.ledger.get(this.region.id).deaths++;
+    // repeated deaths to the same boss earn a whisper about its weakness
+    const bossId = this.activeDeep?.id ?? (this.boss.fightActive && this.boss.alive ? 'oskeline' : null);
+    if (bossId) {
+      const n = (this.bossDeaths.get(bossId) ?? 0) + 1;
+      this.bossDeaths.set(bossId, n);
+      if (n >= 2 && n % 2 === 0 && BOSS_HINTS[bossId]) window.setTimeout(() => this.hud.toast('A whisper from the fog', BOSS_HINTS[bossId], 12), 7000);
+    }
     const p = this.player;
     const marrow = p.progress.marrow;
+    if (marrow > 0) this.tips.want('remnant');
     // Previous remnant is lost forever; the new one holds everything carried.
     if (marrow > 0) {
       const at = p.lastSafe.clone();
@@ -951,6 +980,8 @@ export class Game {
     this.world.step();
     if (this.mode === 'playing') {
       this.playTime += dt;
+      this.ledger.tick(dt, this.region.id);
+      this.regionClears(dt);
       this.gameplayChecks();
       this.objectiveStep(dt);
     }
@@ -1057,6 +1088,8 @@ export class Game {
     };
     this.objectives = new ObjectiveTracker(this.facts);
     this.objectives.onComplete = (o) => {
+      for (const id of this.ledger.newlyCleared(this.objectives.done)) this.clearQueue.push(id);
+      if (this.clearQueue.length) this.clearDelay = 4.5;
       this.hud.toast(o.main ? 'Path fulfilled' : 'Deed done', o.title, 3.5);
       this.audio.play('pickup', { volume: 0.5, rate: 0.7 });
       const next = this.objectives.current;
@@ -1108,6 +1141,78 @@ export class Game {
     }
     const hint = this.objectives.update(0.5, this.playTime);
     if (hint) this.hud.message(hint, 7);
+    this.checkTips();
+  }
+
+  /** Queue first-time tips for mechanics the player is meeting right now. */
+  private checkTips(): void {
+    const p = this.player;
+    const t = this.tips;
+    if (p.lantern.lit && p.lantern.fuel < p.lantern.fuelMax * 0.4) t.want('lantern');
+    if (this.horror.dread > 0.55) t.want('dread');
+    if (p.health < p.maxHealth * 0.4 && p.draughts > 0) t.want('draught');
+    if (p.ult >= 100) t.want('ult');
+    if (p.progress.weapons.length > 1) t.want('swap');
+    for (const e of this.enemies) {
+      if (e.sleeping || !e.alive || e.pos.distanceToSquared(p.pos) > 18 * 18) continue;
+      if (e.def.type === 'stalker') t.want('stalker');
+      else if (e.state === 'chase' || e.state === 'attack') t.want('foe');
+    }
+    const tip = t.next(this.playTime);
+    if (tip) this.hud.toast(tip.title, this.input.usingGamepad ? tip.pad : tip.kb, 7);
+  }
+
+  /** Show the Region Cleared ledger (queued until the player is free to read it). */
+  private regionClears(dt: number): void {
+    if (!this.clearQueue.length) return;
+    this.clearDelay -= dt;
+    if (this.clearDelay > 0 || this.mode !== 'playing' || this.boss.fightActive || this.activeDeep) return;
+    const id = this.clearQueue.shift()!;
+    const def = REGION_CLEAR[id];
+    const st = this.ledger.get(id);
+    const [found, total] = this.ledger.secrets(id, this.objectives.done);
+    const name = REGIONS.find((r) => r.id === id)?.name ?? id;
+    this.addMarrow(def.marrow);
+    this.player.draughts = this.player.progress.draughtsMax;
+    const next = this.objectives.current;
+    this.mode = 'menu';
+    this.input.gameplayEnabled = false;
+    this.input.exitPointerLock();
+    this.hud.setVisible(false);
+    this.hud.clearTransient();
+    this.audio.play('victory', { volume: 0.6, vary: 0 });
+    this.menus.showCleared({
+      name,
+      rows: [
+        ['Time', formatTime(st.time)],
+        ['Deaths', String(st.deaths)],
+        ['Foes laid to rest', String(st.kills)],
+        ['Secrets found', `${found} / ${total}`],
+        ['Reward', `${def.marrow.toLocaleString('en-US')} Marrow · draughts refilled`],
+      ],
+      next: next ? next.title : null,
+    });
+    this.clearDelay = 1;
+    this.save();
+  }
+
+  /** Pause-menu guidance: name the next step, which way it lies, and light the trail. */
+  private whereToGo(): void {
+    this.resume();
+    const o = this.objectives.current;
+    if (!o) {
+      this.hud.message('Nothing calls you onward. Wander, and listen.', 5);
+      return;
+    }
+    const dx = o.target[0] - this.player.pos.x;
+    const dz = o.target[2] - this.player.pos.z;
+    const dist = Math.round(Math.hypot(dx, dz));
+    // +x is east and -z is south (the Godwound lies south of the cathedral)
+    const dirs = ['east', 'north-east', 'north', 'north-west', 'west', 'south-west', 'south', 'south-east'];
+    const dir = dirs[((Math.round(Math.atan2(dz, dx) / (Math.PI / 4)) % 8) + 8) % 8];
+    this.hud.toast(o.title, `${o.hint} (${dist < 8 ? 'here' : `${dir}, about ${dist} m`})`, 10);
+    this.guideBoost = 12;
+    this.guideT = 0;
   }
 
   /** Lantern lean and path wisps toward the current main objective. */
@@ -1116,12 +1221,25 @@ export class Game {
     const dir = this.objectives.direction(p.pos, this.tmp);
     p.lantern.lean = dir && p.lantern.lit ? dir.clone() : null;
     for (const n of this.noteMeshes) if (n.mesh.visible && n.pos.distanceToSquared(p.pos) < 400 && Math.random() < dt * 1.5) this.gpu.embers(n.pos.clone().setY(n.pos.y + 0.1), 1, 0xd8d0c0);
+    // objective markers: a slow column of motes over each tracked goal nearby (gold for the main path)
+    this.markerT -= dt;
+    if (this.markerT <= 0) {
+      this.markerT = 0.35;
+      for (const o of this.objectives.tracked(this.region.id)) {
+        const q = new THREE.Vector3(...o.target);
+        if (q.distanceToSquared(p.pos) > 70 * 70 || q.distanceToSquared(p.pos) < 4) continue;
+        q.y += 0.4;
+        this.gpu.emit(this.gpu.add, { pos: q, count: 1, jitter: 0.25, vel: new THREE.Vector3(0, 0.45, 0), spread: 0.2, speed: [0.05, 0.15], life: [2.2, 3.2], size: [0.06, 0.1], color: o.main ? 0xffc870 : 0xa8c0e0, alpha: 0.55, fadeIn: 0.5, drag: 0.2 });
+      }
+    }
+    this.guideBoost = Math.max(0, this.guideBoost - dt);
+    const boosted = this.guideBoost > 0;
     this.guideT -= dt;
-    if (!dir || this.guideT > 0 || !p.lantern.lit || this.boss.fightActive) return;
-    this.guideT = 1.6;
+    if (!dir || this.guideT > 0 || (!p.lantern.lit && !boosted) || this.boss.fightActive) return;
+    this.guideT = boosted ? 0.9 : 1.6;
     const target = new THREE.Vector3(...this.objectives.current!.target);
     const dist = Math.hypot(target.x - p.pos.x, target.z - p.pos.z);
-    for (let d = 3; d < Math.min(14, dist - 2); d += 2.2) {
+    for (let d = 3; d < Math.min(boosted ? 36 : 14, dist - 2); d += 2.2) {
       const q = p.pos.clone().addScaledVector(dir, d);
       const g = this.physics.groundHeight(q.x, q.z, p.pos.y + 2.5, 6);
       if (g === null) break;

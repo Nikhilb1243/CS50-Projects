@@ -86,3 +86,23 @@ Causes found and fixed:
 - Left for later: point lights still cast no shadows, so a candle can bleed through a thin wall. Fixing that
   properly needs shadowed point lights or light volumes (costly), so interiors instead rely on no moon and
   a dim, warm fill. Objective key lights come with Milestone 3's markers.
+
+### Milestone 3: done (2026-09-24)
+- `world/progression.ts`: `REGION_CLEAR` lists the main objectives (goal + boss) that clear each region and
+  its Marrow reward. `RegionLedger` tracks time, deaths and kills per region and is saved (`SaveData.regions`).
+  When a region's goals are all done, a **Region Cleared** card (menus `cleared` screen) shows time, deaths,
+  foes laid to rest, secrets found (optional deeds done / total), the reward (Marrow + draughts refilled) and
+  "The way opens: <next main objective>". Walking on lights a long guiding wisp trail toward it for 10 s.
+  Cards wait until the player is free (no boss fight, not in a menu), so the Wick-Mother's victory screen
+  comes first. Regions already cleared in a save never replay.
+- Tips: `TipBook` shows one first-time tip at a time (12 s apart, remembered in localStorage) for being
+  spotted, low lantern oil, rising dread, low health, a gorged ultimate, owning a second weapon, a
+  stalker nearby and dropping a Marrow remnant. Keyboard and gamepad wording.
+- Boss whispers: every second death to the same boss (Wick-Mother, Bone Choir, Hanged Warden) brings a
+  "A whisper from the fog" toast naming its weakness (matches the in-world notes).
+- Pause menu "Where do I go?": names the next main objective with its hint, compass bearing and distance,
+  and lights a boosted wisp trail (36 m, even with the lantern shuttered) for 12 s.
+- World markers: tracked objectives within 70 m emit a slow column of motes (gold for the main path, pale
+  blue for optional deeds). Unlit shrines smoulder since M2.
+- Left for later: the world stays physically open (no hard gates). "Open the way" is the guidance trail and the
+  next objective, not a barrier that drops. There are no candle props at non-shrine objectives.

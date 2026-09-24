@@ -241,6 +241,11 @@ export class Hud {
     );
   }
 
+  /** Dismiss toasts, banners and messages (before a full-screen card). */
+  clearTransient(): void {
+    for (const e of [this.toastEl, this.bannerEl, this.msgEl]) e.classList.remove('show');
+  }
+
   fade(on: boolean): void {
     this.fadeEl.classList.toggle('show', on);
   }
